@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+config.py
+.env
+
+# SQLite (если переходишь на Postgres — точно игнорируй)
+*.sqlite
+*.sqlite3
+db.sqlite3
+
+# IDE
+.idea/
+.vscode/
+
+# Docker
+*.log
