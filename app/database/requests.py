@@ -12,9 +12,7 @@ import idna
 
 
 
-#from config import BASE_URL
-SOUNDCLOUD_CLIENT_ID = "LAd42S06rwW6N9SO85p7573ak7rH6lMf"
-proxy_url = "http://c4rqkLmr:AU8GDE7J@154.195.122.121:64364"
+from config import SOUNDCLOUD_CLIENT_ID, proxy_url
 
 async def set_user(tg_id):
     async with async_session() as session:
@@ -24,8 +22,6 @@ async def set_user(tg_id):
             session.add(User(tg_id=tg_id))
             await session.commit()
 
-
-BASE_URL = "https://musify.club"
 
 
 HEADERS = {"User-Agent": "Mozilla/5.0"}
