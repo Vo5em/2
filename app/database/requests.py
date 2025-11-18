@@ -6,13 +6,9 @@ import uuid
 import asyncio
 from rapidfuzz import fuzz
 from app.database.models import User, async_session
-from playwright.async_api import async_playwright, TimeoutError
 from sqlalchemy import select, update, delete, desc
 from bs4 import BeautifulSoup
-from mutagen.mp3 import MP3
-from io import BytesIO
 import idna
-import urllib.parse
 
 
 
