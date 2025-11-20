@@ -26,16 +26,6 @@ async def set_user(tg_id):
 
 HEADERS = {"User-Agent": "Mozilla/5.0"}
 
-'''async def check_artist_domain(session, artist: str):
-    url = f"https://{artist.lower()}.skysound7.com/"
-    try:
-        async with session.get(url, headers=HEADERS, timeout=5) as resp:
-            if resp.status == 200:
-                return url
-    except:
-        return None
-    return None'''
-
 # --- SoundCloud поиск ---
 
 async def get_soundcloud_mp3_url(transcoding_url: str):
@@ -225,6 +215,7 @@ async def search_skysound(artist_query: str):
         print(f"💥 [SkySound] Неожиданная ошибка: {e}")
 
     print(f"✅ [SkySound] Всего найдено треков: {len(tracks)}")
+    print(f"{artist},{title}")
     return tracks
 
 
