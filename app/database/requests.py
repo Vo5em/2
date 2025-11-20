@@ -215,7 +215,6 @@ async def search_skysound(artist_query: str):
         print(f"💥 [SkySound] Неожиданная ошибка: {e}")
 
     print(f"✅ [SkySound] Всего найдено треков: {len(tracks)}")
-    print(f"{artist},{title}")
     return tracks
 
 

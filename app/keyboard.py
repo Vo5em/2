@@ -33,17 +33,17 @@ def build_tracks_keyboard(tracks: list, page: int = 1) -> InlineKeyboardBuilder:
             callback_data=f"play_{i}"
         )
 
-    builder.adjust(1)  # По одной кнопке в строке
+    builder.adjust(1)
 
-    # 🔁 Кнопки навигации (как на втором скриншоте)
+    # 🔁 Кнопки навигации
     nav_buttons = []
     if page > 1:
-        nav_buttons.append(InlineKeyboardButton(text="⬅️ предыдущие", callback_data=f"page_{page - 1}"))
+        nav_buttons.append(InlineKeyboardButton(text="<-", callback_data=f"page_{page - 1}"))
 
     nav_buttons.append(InlineKeyboardButton(text=f"{page}/{total_pages}", callback_data="noop"))
 
     if page < total_pages:
-        nav_buttons.append(InlineKeyboardButton(text="следующие ➡️", callback_data=f"page_{page + 1}"))
+        nav_buttons.append(InlineKeyboardButton(text="->", callback_data=f"page_{page + 1}"))
 
     if nav_buttons:
         builder.row(*nav_buttons)
