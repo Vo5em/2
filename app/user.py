@@ -15,7 +15,7 @@ from app.keyboard import build_tracks_keyboard
 user = Router()
 user_tracks = {}
 
-file_01 = "AgACAgIAAxkBAAIEy2kglAIsWtvjrx9a1GPP-FxkPVrAAAIFC2sbB4UJSXfv5raSOpmIAQADAgADbQADNgQ"
+file_01 = "AgACAgIAAxkBAAIE0GkgmQEem1kPidG6HmckduHABs6eAAI2C2sbB4UJSS4msfgOkhQbAQADAgADbQADNgQ"
 
 @user.message(CommandStart())
 async def cmd_start(message: Message):
