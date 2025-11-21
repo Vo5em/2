@@ -129,7 +129,7 @@ async def play_track(callback: CallbackQuery):
 
     except Exception as e:
         print(f"💥 Ошибка при отправке трека: {e}")
-        await callback.message.edit_text("😔 Не удалось скачать трек.")
+        await callback.message.answer("😔 Не удалось скачать трек.")
 
 
 @user.callback_query(lambda c: c.data.startswith("page_"))
