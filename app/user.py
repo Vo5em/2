@@ -113,7 +113,7 @@ async def play_track(callback: CallbackQuery):
             tmp_path = tmp.name
 
         audio_file = FSInputFile(tmp_path, filename=f"{title}.mp3")
-        thumb = FSInputFile("ttumb.jpg")
+        ttumb = FSInputFile("ttumb.jpg")
 
         # --- Отправляем аудио ---
         await callback.message.delete()
