@@ -1,6 +1,7 @@
 from aiogram import Router, F
 import aiohttp
 import io
+import tempfile
 import re
 import html
 from aiogram.types import Message, CallbackQuery, BufferedInputFile, FSInputFile
@@ -107,8 +108,13 @@ async def play_track(callback: CallbackQuery):
             await callback.message.edit_text("😔 Файл поврежден или недоступен.")
             return
 
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:
+            tmp.write(audio_bytes)
+            tmp_path = tmp.name
+
+        audio_file = FSInputFile(tmp_path, filename=f"{title}.mp3")
+
         # --- Отправляем аудио ---
-        audio_file = BufferedInputFile(audio_bytes, filename=f"{title}.mp3")
         await callback.message.delete()
         await callback.message.answer_audio(
             audio=audio_file,
