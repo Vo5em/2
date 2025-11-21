@@ -114,7 +114,7 @@ async def play_track(callback: CallbackQuery):
             audio=audio_file,
             title=track['title'],
             performer=track['artist'],
-            thumbnail=file_01,
+            thumb=file_01,
             caption= f'<a href="https://t.me/eschalon">eschalon</a>, <a herf="t.me/eschalonmusicbot">music</a>',
             parse_mode="HTML"
         )
