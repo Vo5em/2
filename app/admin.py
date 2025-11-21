@@ -11,7 +11,13 @@ class Admin(Filter):
 
 @admin.message(Admin(), F.photo)
 async def get_photo(message: Message):
-    await message.answer(f'ID фотографии: {message.photo[-1].file_id}')
+    file_id =  message.photo[-1].file_id
+    file = await message.bot.get_file(file_id)
+
+    file_path = f"thumb.jpg"
+    await message.bot.download_file(file.file_path, destination=file_path)
+
+    await message.answer("✔️ Thumbnail сохранён как thumb.jpg")
 
 
 @admin.message(Admin(), F.sticker)
