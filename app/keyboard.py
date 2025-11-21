@@ -35,19 +35,24 @@ def build_tracks_keyboard(tracks: list, page: int = 1) -> InlineKeyboardBuilder:
 
     builder.adjust(1)
 
-    # 🔁 Кнопки навигации
-    nav_buttons = []
-    if page > 1:
-        nav_buttons.append(InlineKeyboardButton(text="<-", callback_data=f"page_{page - 1}"))
+    if total_pages > 1:
+        nav_buttons = []
 
-    nav_buttons.append(InlineKeyboardButton(text=f"{page}/{total_pages}", callback_data="noop"))
+        if page > 1:
+            nav_buttons.append(
+                InlineKeyboardButton(text="<-", callback_data=f"page_{page - 1}")
+            )
 
-    if page < total_pages:
-        nav_buttons.append(InlineKeyboardButton(text="->", callback_data=f"page_{page + 1}"))
+        nav_buttons.append(
+            InlineKeyboardButton(text=f"{page}/{total_pages}", callback_data="noop")
+        )
 
-    if nav_buttons:
+        if page < total_pages:
+            nav_buttons.append(
+                InlineKeyboardButton(text="->", callback_data=f"page_{page + 1}")
+            )
+
         builder.row(*nav_buttons)
-
     return builder
 
 

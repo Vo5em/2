@@ -32,7 +32,7 @@ async def handle_message(message: Message):
     tracks += await search_soundcloud(query)
 
     if not tracks:
-        await status.edit_text("😔 Ничего не найдено.")
+        await status.edit_text(f"«{query}» - ничего не найдено.")
         return
 
     # 🔍 Ранжируем по схожести
@@ -60,7 +60,6 @@ async def play_track(callback: CallbackQuery):
     url = track["url"]
     title = f"{track['artist']} — {track['title']}"
 
-    await callback.message.answer(f"🎧 Загружаю: {title}")
 
     try:
         mp3_url = None
@@ -68,7 +67,7 @@ async def play_track(callback: CallbackQuery):
         if track["source"] == "SoundCloud":
             mp3_url = await get_soundcloud_mp3_url(url)
             if not mp3_url:
-                await callback.message.answer("😔 Не удалось получить mp3")
+                await callback.message.edit_text("😔 Не удалось получить mp3")
                 return
 
         else:
