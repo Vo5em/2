@@ -15,7 +15,7 @@ from app.keyboard import build_tracks_keyboard
 user = Router()
 user_tracks = {}
 
-file_01 = "AgACAgIAAxkBAAIE32kgtYgobhdNuRkzjI0uzd2p1w4jAAJBDGsbB4UJSbz94bxf0L1GAQADAgADbQADNgQ"
+file_01 = "AgACAgIAAxkBAAIE52kgt3bMrOFh_E8zC13pEFXhAco9AALjEGsbdTMAAUlnAmO6fj4n1AEAAwIAA20AAzYE"
 
 @user.message(CommandStart())
 async def cmd_start(message: Message):
@@ -120,7 +120,7 @@ async def play_track(callback: CallbackQuery):
             audio=audio_file,
             title=track['title'],
             performer=track['artist'],
-            thumb="AgACAgIAAxkBAAIE32kgtYgobhdNuRkzjI0uzd2p1w4jAAJBDGsbB4UJSbz94bxf0L1GAQADAgADbQADNgQ",
+            thumb=file_01,
             caption= f'<a href="https://t.me/eschalon">eschalon</a>, <a href="t.me/eschalonmusicbot">music</a>',
             parse_mode="HTML"
         )
