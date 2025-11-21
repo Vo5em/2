@@ -25,14 +25,14 @@ async def cmd_start(message: Message):
 @user.message(F.text)
 async def handle_message(message: Message):
     query = message.text.strip()
-    await message.answer("🔍 Ищу треки, подожди...")
+    status = await message.answer("🔍 Ищу треки, подожди...")
 
     tracks = []
     tracks += await search_skysound(query)
     tracks += await search_soundcloud(query)
 
     if not tracks:
-        await message.answer("😔 Ничего не найдено.")
+        await status.edit_text("😔 Ничего не найдено.")
         return
 
     # 🔍 Ранжируем по схожести
@@ -41,7 +41,7 @@ async def handle_message(message: Message):
     user_tracks[message.from_user.id] = tracks
     keyboard = build_tracks_keyboard(tracks, page=1)
 
-    await message.answer(
+    await status.edit_text(
         "Выбери трек:",
         reply_markup=keyboard.as_markup()
     )
