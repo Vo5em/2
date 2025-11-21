@@ -32,7 +32,7 @@ async def handle_message(message: Message):
     tracks += await search_soundcloud(query)
 
     if not tracks:
-        await message.answer("😔 Ничего не найдено.")
+        await message.edit_text("😔 Ничего не найдено.")
         return
 
     # 🔍 Ранжируем по схожести
@@ -41,7 +41,7 @@ async def handle_message(message: Message):
     user_tracks[message.from_user.id] = tracks
     keyboard = build_tracks_keyboard(tracks, page=1)
 
-    await message.answer(
+    await message.edit_text(
         "Выбери трек:",
         reply_markup=keyboard.as_markup()
     )
@@ -68,7 +68,7 @@ async def play_track(callback: CallbackQuery):
         if track["source"] == "SoundCloud":
             mp3_url = await get_soundcloud_mp3_url(url)
             if not mp3_url:
-                await callback.message.answer("😔 Не удалось получить mp3 с SoundCloud.")
+                await callback.message.answer("😔 Не удалось получить mp3")
                 return
 
         else:
@@ -78,8 +78,8 @@ async def play_track(callback: CallbackQuery):
                     html = await resp.text()
             mp3_links = re.findall(r'https:\/\/[^\s"]+\.mp3', html)
             if not mp3_links:
-                print(f"🚫 [SkySound] mp3 не найден, возможно неверный URL или нужна VPN")
-                await callback.message.answer("😔 Не удалось получить mp3 SkySound.")
+                print(f"🚫 [SkySound] mp3 не найден")
+                await callback.message.edit_text("😔 Не удалось получить mp3.")
                 return
             mp3_url = mp3_links[0]
 
@@ -92,18 +92,19 @@ async def play_track(callback: CallbackQuery):
             async with session.get(mp3_url, headers=headers, timeout=30) as resp:
                 if resp.status != 200:
                     print(f"⚠️ Ошибка загрузки mp3: {resp.status}")
-                    await callback.message.answer("😔 Не удалось скачать трек (код ответа).")
+                    await callback.message.edit_text("😔 Не удалось скачать трек (код ответа).")
                     return
                 audio_bytes = await resp.read()
 
         # --- Проверяем размер ---
         if len(audio_bytes) < 50000:
             print("⚠️ mp3 слишком короткий, возможно битая ссылка.")
-            await callback.message.answer("😔 Файл поврежден или недоступен.")
+            await callback.message.edit_text("😔 Файл поврежден или недоступен.")
             return
 
         # --- Отправляем аудио ---
         audio_file = BufferedInputFile(audio_bytes, filename=f"{title}.mp3")
+        await callback.message.delete()
         await callback.message.answer_audio(
             audio=audio_file,
             title=track['title'],
@@ -112,7 +113,7 @@ async def play_track(callback: CallbackQuery):
 
     except Exception as e:
         print(f"💥 Ошибка при отправке трека: {e}")
-        await callback.message.answer("😔 Не удалось скачать трек.")
+        await callback.message.edit_text("😔 Не удалось скачать трек.")
 
 
 @user.callback_query(lambda c: c.data.startswith("page_"))
