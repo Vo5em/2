@@ -14,10 +14,10 @@ async def get_photo(message: Message):
     file_id =  message.photo[-1].file_id
     file = await message.bot.get_file(file_id)
 
-    file_path = f"thumb.jpg"
+    file_path = f"ttumb.jpg"
     await message.bot.download_file(file.file_path, destination=file_path)
 
-    await message.answer("✔️ Thumbnail сохранён как thumb.jpg")
+    await message.answer("✔️ Thumbnail сохранён как ttumb.jpg")
 
 
 @admin.message(Admin(), F.sticker)
