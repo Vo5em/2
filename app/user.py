@@ -113,7 +113,7 @@ async def play_track(callback: CallbackQuery):
             tmp_path = tmp.name
 
         audio_file = FSInputFile(tmp_path, filename=f"{title}.mp3")
-        thumb = FSInputFile("thumb.jpg")
+        thumb = FSInputFile("ttumb.jpg")
 
         # --- Отправляем аудио ---
         await callback.message.delete()
@@ -121,7 +121,7 @@ async def play_track(callback: CallbackQuery):
             audio=audio_file,
             title=track['title'],
             performer=track['artist'],
-            thumb=thumb,
+            thumb=ttumb,
             caption= f'<a href="https://t.me/eschalon">eschalon</a>, <a href="t.me/eschalonmusicbot">music</a>',
             parse_mode="HTML"
         )
