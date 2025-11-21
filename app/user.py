@@ -118,6 +118,7 @@ async def play_track(callback: CallbackQuery):
             caption= f'<a href="https://t.me/eschalon">eschalon</a>, <a href="t.me/eschalonmusicbot">music</a>',
             parse_mode="HTML"
         )
+        print(audio_bytes[:10])
 
     except Exception as e:
         print(f"💥 Ошибка при отправке трека: {e}")
