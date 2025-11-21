@@ -2,6 +2,7 @@ from aiogram import Router, F
 import aiohttp
 import io
 import re
+import html
 from aiogram.types import Message, CallbackQuery, BufferedInputFile, FSInputFile
 from aiogram.filters import CommandStart, Command
 
@@ -13,18 +14,18 @@ from app.keyboard import build_tracks_keyboard
 user = Router()
 user_tracks = {}
 
-
+file_01 = ""
 
 @user.message(CommandStart())
 async def cmd_start(message: Message):
     await set_user(message.from_user.id)
     await message.answer('Добро пожаловать в бот!')
 
+
 @user.message(Command('id'))
 async def getmyid(message: Message):
     id = message.from_user.id
     await message.answer(f'{id}')
-
 
 
 @user.message(F.text)
@@ -112,7 +113,10 @@ async def play_track(callback: CallbackQuery):
         await callback.message.answer_audio(
             audio=audio_file,
             title=track['title'],
-            performer=track['artist']
+            performer=track['artist'],
+            thumbnail=file_01,
+            caption= f'<a href="https://t.me/eschalon">eschalon</a>, <a herf="t.me/eschalonmusicbot">music</a>',
+            parse_mode="HTML"
         )
 
     except Exception as e:
