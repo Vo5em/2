@@ -32,7 +32,7 @@ async def handle_message(message: Message):
     tracks += await search_soundcloud(query)
 
     if not tracks:
-        await message.edit_text("😔 Ничего не найдено.")
+        await message.answer("😔 Ничего не найдено.")
         return
 
     # 🔍 Ранжируем по схожести
@@ -41,7 +41,7 @@ async def handle_message(message: Message):
     user_tracks[message.from_user.id] = tracks
     keyboard = build_tracks_keyboard(tracks, page=1)
 
-    await message.edit_text(
+    await message.answer(
         "Выбери трек:",
         reply_markup=keyboard.as_markup()
     )
