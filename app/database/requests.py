@@ -110,153 +110,232 @@ async def search_soundcloud(query: str):
 seen_urls = set()
 
 async def search_skysound(artist_query: str):
-    """Парсит skysound7.com по имени артиста с чистыми названиями треков и длительностью"""
-    artist_query_raw = artist_query.strip().lower()
+    """
+    Самая надёжная версия поиска SkySound:
+      ✓ корректный punycode
+      ✓ отсутствие дублей
+      ✓ стабильный парсинг длительности
+      ✓ чистка мусорных названий
+      ✓ глубокий поиск ссылок
+    """
 
-    # 🔤 Заменяем пробелы и любые лишние символы (например, двойные дефисы)
-    artist_query_raw = re.sub(r"[^a-zа-я0-9]+", "-", artist_query_raw)
-
-    # 🧹 Убираем повторяющиеся дефисы и лишние в начале/конце
-    artist_query_raw = re.sub(r"-{2,}", "-", artist_query_raw).strip("-")
+    # -------------------------------
+    # 1) ЧИСТИМ НАЗВАНИЕ АРТИСТА
+    # -------------------------------
+    artist_raw = artist_query.strip().lower()
+    artist_raw = re.sub(r"[^a-zа-я0-9]+", "-", artist_raw)
+    artist_raw = re.sub(r"-{2,}", "-", artist_raw).strip("-")
 
     try:
-        # 🔠 Конвертируем в punycode, если есть русские буквы
-        artist_domain = idna.encode(artist_query_raw).decode()
-    except idna.IDNAError:
-        # Если домен на латинице — оставляем как есть
-        artist_domain = artist_query_raw
+        artist_domain = idna.encode(artist_raw).decode()
+    except:
+        artist_domain = artist_raw
 
     url = f"https://{artist_domain}.skysound7.com/"
-    print(f"🌐 [SkySound] Формирую URL: {url}")
-
-    tracks = []
+    print(f"\n🌐 [SkySearch] URL артиста: {url}")
 
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
         "Referer": "https://skysound7.com/"
     }
 
+    tracks = []
+    seen = set()
+
     try:
         async with aiohttp.ClientSession() as session:
-            print("🔗 [SkySound] Отправляю запрос...")
-            async with session.get(url, headers=headers, timeout=10) as resp:
-                print(f"📡 [SkySound] Код ответа: {resp.status}")
+            async with session.get(url, headers=headers, timeout=12) as resp:
+                print("📡 Код:", resp.status)
                 if resp.status != 200:
-                    print("⚠️ [SkySound] Сервер вернул не 200 — страница недоступна.")
                     return []
 
                 html = await resp.text()
-                print(f"📃 [SkySound] Длина HTML: {len(html)} символов")
 
-                if "Not Found" in html or "404" in html:
-                    print("🚫 [SkySound] На странице 'Not Found'")
-                    return []
-
-                soup = BeautifulSoup(html, "html.parser")
-                print("🔍 [SkySound] Ищу ссылки на треки...")
-
-                links = soup.select("a[href*='/t/']")
-                print(f"🎶 [SkySound] Найдено ссылок: {len(links)}")
-
-
-                for link in links:
-                    href = link.get("href")
-                    if not href:
-                        continue
-                    if not href.startswith("http"):
-                        href = f"https://{artist_domain}.skysound7.com{href}"
-
-
-                    # ⏱️ Пробуем найти длительность (в формате 3:42)
-                    track_container = link.find_parent("div", class_="playlist-item") or link.parent
-
-                    duration = "?:??"
-                    if track_container:
-                        # ищем соседний блок с длительностью
-                        playlist_right = track_container.find_next("div", class_="playlist-right")
-                        if playlist_right:
-                            duration_tag = playlist_right.find("span", class_="playlist-duration")
-                            if duration_tag:
-                                duration = duration_tag.text.strip()
-
-                    print("⏱ Длительность:", duration)
-
-
-                    # 🔁 Пропускаем дубликаты по ссылке
-                    if href in seen_urls:
-                        continue
-                    seen_urls.add(href)
-
-                    # 🎵 Получаем текст и чистим
-                    title_raw = (link.get("title") or link.text or "").strip()
-                    title_raw = re.sub(r"\bскачать\b", "", title_raw, flags=re.IGNORECASE)
-                    title_raw = re.sub(r"^\s*[\-–—‒−]+\s*", "", title_raw).strip()
-
-                    # 🎤 Разделяем артист и трек (если есть "-")
-                    if " - " in title_raw:
-                        artist, title = title_raw.split(" - ", 1)
-                    else:
-                        artist, title = "", title_raw
-
-
-
-                    tracks.append({
-                        "title": title or "Без названия",
-                        "artist": artist or "Неизвестен",
-                        "url": href,
-                        "duration": duration,
-                        "source": "SkySound"
-                    })
-
-
-    except aiohttp.ClientError as e:
-        print(f"❌ [SkySound] Ошибка соединения: {e}")
     except Exception as e:
-        print(f"💥 [SkySound] Неожиданная ошибка: {e}")
+        print("❌ Ошибка соединения:", e)
+        return []
 
-    print(f"✅ [SkySound] Всего найдено треков: {len(tracks)}")
+    soup = BeautifulSoup(html, "html.parser")
+
+    # -------------------------------
+    # 2) ИЩЕМ ТРЕКИ
+    # -------------------------------
+    playlist_items = soup.select("div.playlist-item")
+
+    if not playlist_items:
+        print("🚫 playlist-item не найден")
+        return []
+
+    for item in playlist_items:
+
+        # ссылка на трек
+        link = item.find("a", href=True)
+        if not link:
+            continue
+
+        href = link["href"].strip()
+
+        # полный URL
+        if not href.startswith("http"):
+            href = f"https://{artist_domain}.skysound7.com{href}"
+
+        if href in seen:
+            continue
+        seen.add(href)
+
+        # -------------------------
+        # НАЗВАНИЕ И АРТИСТ
+        # -------------------------
+        title_raw = (link.get("title") or link.text or "").strip()
+        title_raw = re.sub(r"\b(скачать|download|слушать)\b", "", title_raw, flags=re.I)
+        title_raw = title_raw.strip(" -\u2013\u2014")
+
+        artist = ""
+        title = title_raw
+
+        if " - " in title_raw:
+            artist, title = title_raw.split(" - ", 1)
+
+        if not title:
+            title = "Без названия"
+        if not artist:
+            artist = "Неизвестен"
+
+        # -------------------------
+        # ДЛИТЕЛЬНОСТЬ
+        # -------------------------
+        duration = "?:??"
+
+        dur_block = item.select_one("div.playlist-right span.playlist-duration")
+        if dur_block:
+            duration = dur_block.text.strip()
+
+        tracks.append({
+            "title": title,
+            "artist": artist,
+            "url": href,
+            "duration": duration,
+            "source": "SkySound"
+        })
+
+    print(f"🎵 Найдено треков: {len(tracks)}")
     return tracks
 
 
 async def get_skysound_mp3(track_page_url: str):
-    """Извлекает прямую mp3-ссылку со страницы SkySound (расширенный лог)"""
+    """
+    Надёжно получает mp3-ссылку со страницы SkySound.
+    Ищет в HTML, в скриптах, проверяет валидность URL, делает HEAD-проверку.
+    """
     print(f"\n🎯 [SkySound] Парсим страницу: {track_page_url}")
+
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                      "AppleWebKit/537.36 (KHTML, like Gecko) "
-                      "Chrome/128.0 Safari/537.36"
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/128.0 Safari/537.36"
+        ),
+        "Referer": track_page_url
     }
 
-    try:
-        async with aiohttp.ClientSession() as session:
-            print("🌐 Отправляю запрос к странице трека...")
+    async with aiohttp.ClientSession() as session:
+        try:
+            print("🌐 Загружаю страницу трека...")
             async with session.get(track_page_url, headers=headers, timeout=15) as resp:
                 print(f"📡 Код ответа: {resp.status}")
+                if resp.status != 200:
+                    print("❌ Сервер вернул ошибку, прекращаю.")
+                    return None
+
                 html = await resp.text()
-                print(f"📄 Размер HTML: {len(html)} символов")
+                print(f"📄 Загружено HTML: {len(html)} символов")
 
-        soup = BeautifulSoup(html, "html.parser")
-
-        # Ищем аудио или ссылку на mp3
-        print("🔍 [SkySound] Ищу mp3 через регулярку...")
-        mp3_pattern = re.compile(r'https:\/\/[^\s"]+\.mp3')
-        matches = mp3_pattern.findall(html)
-        if matches:
-            print(f"🎯 Найдено потенциальных ссылок: {len(matches)}")
-            for i, m in enumerate(matches[:5]):
-                print(f"🔗 {i + 1}. {m}")
-            mp3_url = matches[0]
-        else:
-            print("🚫 mp3 не найден даже по регулярке.")
-            preview = html[:600]
-            print(f"🧾 Превью HTML:\n{preview}")
+        except Exception as e:
+            print(f"💥 Ошибка загрузки страницы: {type(e).__name__}: {e}")
             return None
 
+    soup = BeautifulSoup(html, "html.parser")
 
+    # -----------------------------------------
+    # 1. ИЩЕМ ВСЕ ВОЗМОЖНЫЕ mp3-ССЫЛКИ
+    # -----------------------------------------
+    print("🔍 Ищу mp3 в HTML и JS...")
 
-    except Exception as e:
-        print(f"💥 Ошибка в get_skysound_mp3: {type(e).__name__}: {e}")
+    mp3_candidates = set()
+
+    # По регулярке (главный способ)
+    mp3_candidates.update(re.findall(r'https:\/\/[^\s"]+\.mp3', html))
+
+    # Из <audio> тегов
+    for audio in soup.select("audio"):
+        src = audio.get("src")
+        if src and src.endswith(".mp3"):
+            mp3_candidates.add(src)
+
+    # Из data-* атрибутов
+    for tag in soup.find_all():
+        for attr, val in tag.attrs.items():
+            if isinstance(val, str) and val.endswith(".mp3"):
+                mp3_candidates.add(val)
+
+    print(f"🎵 Найдено потенциальных mp3 ссылок: {len(mp3_candidates)}")
+    for m in mp3_candidates:
+        print(" ➤", m)
+
+    if not mp3_candidates:
+        print("🚫 Ни одной mp3 ссылки не найдено!")
         return None
+
+    # -----------------------------------------
+    # 2. ПРОВЕРКА КАЖДОЙ ССЫЛКИ (HEAD + GET)
+    # -----------------------------------------
+    async def check_mp3(url):
+        """Проверяет что ссылка — настоящая mp3"""
+        if not url.startswith("http"):
+            # относительные пути
+            try:
+                base = track_page_url.split("/", 3)
+                url = base[0] + "//" + base[2] + "/" + url.lstrip("/")
+            except:
+                return None
+
+        print(f"\n🔎 Проверяю ссылку: {url}")
+
+        try:
+            # Сначала HEAD — быстро и не качает файл
+            async with session.head(url, headers=headers, timeout=10, allow_redirects=True) as resp:
+                ct = resp.headers.get("Content-Type", "")
+                print(f"   HEAD: status={resp.status}, CT={ct}")
+
+                if resp.status == 200 and "audio" in ct.lower():
+                    print("   ✔ HEAD подтверждает mp3")
+                    return url
+
+            # Если HEAD ничего не дал — пробуем маленький GET
+            async with session.get(url, headers=headers, timeout=15) as resp:
+                ct = resp.headers.get("Content-Type", "")
+                print(f"   GET: status={resp.status}, CT={ct}")
+
+                if resp.status == 200 and "audio" in ct.lower():
+                    print("   ✔ GET подтвердил mp3")
+                    return url
+
+        except Exception as e:
+            print(f"   ✖ Ошибка при проверке ссылки: {type(e).__name__}: {e}")
+
+        return None
+
+    # -----------------------------------------
+    # 3. Ищем первую РАБОЧУЮ ссылку
+    # -----------------------------------------
+    for candidate in mp3_candidates:
+        valid = await check_mp3(candidate)
+        if valid:
+            print(f"\n✅ Найдена рабочая mp3: {valid}")
+            return valid
+
+    print("❌ Ни одна mp3-ссылка не работает")
+    return None
 
 def rank_tracks_by_similarity(query: str, tracks: list):
     """
