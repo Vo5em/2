@@ -23,12 +23,6 @@ async def cmd_start(message: Message):
     await message.answer('Добро пожаловать в музыкальный архив eschalon.\nЗапросите исполнителя или трек.')
 
 
-@user.message(Command('id'))
-async def getmyid(message: Message):
-    id = message.from_user.id
-    await message.answer(f'{id}')
-
-
 @user.message(F.text)
 async def handle_message(message: Message):
     query = message.text.strip()

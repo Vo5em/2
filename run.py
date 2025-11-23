@@ -3,6 +3,7 @@ from aiogram import Bot, Dispatcher
 
 from app.user import user
 from app.admin import admin
+from app.inline import router
 
 from config import TOKEN
 
@@ -14,7 +15,7 @@ from app.database.models import async_main
 
 async def main():
     dp = Dispatcher()
-    dp.include_routers(user, admin)
+    dp.include_routers(user, admin, router)
     dp.startup.register(startup)
     bot = Bot(token=TOKEN)
 
