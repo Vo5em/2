@@ -4,7 +4,7 @@ from aiogram import Router
 from aiogram.types import InlineQuery, InlineQueryResultArticle, InputTextMessageContent, InlineKeyboardButton
 from aiogram.types import InlineKeyboardMarkup, InlineQueryResultAudio
 from app.database.requests import search_skysound, search_soundcloud, rank_tracks_by_similarity, get_soundcloud_mp3_url
-
+from app.database.requests import duration_to_seconds
 
 
 router = Router()
@@ -53,10 +53,9 @@ async def inline_handler(query: InlineQuery):
                     continue
                 mp3_url = mp3_links[0]
 
-            # --- Длительность из твоей информации (если есть), иначе None ---
-            duration = track.get("duration") or None
+            # --- Конвертация длительности ---
+            duration = duration_to_seconds(track.get("duration"))
 
-            # --- Формируем результат, который сразу отправляет аудио ---
             results.append(
                 InlineQueryResultAudio(
                     id=str(i),

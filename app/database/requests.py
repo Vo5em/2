@@ -287,3 +287,24 @@ def rank_tracks_by_similarity(query: str, tracks: list):
     sorted_tracks = [t for _, t in ranked]
     return sorted_tracks
 
+
+def duration_to_seconds(d):
+    if not d:
+        return None
+
+    if isinstance(d, int):
+        return d
+
+    if ":" in d:
+        try:
+            m, s = d.split(":")
+            return int(m) * 60 + int(s)
+        except:
+            return None
+
+    # если пришло что-то странное — игнорируем
+    try:
+        return int(d)
+    except:
+        return None
+
