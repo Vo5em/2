@@ -20,7 +20,7 @@ file_01 = "AgACAgIAAxkBAAIE52kgt3bMrOFh_E8zC13pEFXhAco9AALjEGsbdTMAAUlnAmO6fj4n1
 @user.message(CommandStart())
 async def cmd_start(message: Message):
     await set_user(message.from_user.id)
-    await message.answer('Добро пожаловать в бот!')
+    await message.answer('Добро пожаловать в музыкальный архив eschalon.\nЗапросите исполнителя или трек.')
 
 
 @user.message(Command('id'))
@@ -32,14 +32,14 @@ async def getmyid(message: Message):
 @user.message(F.text)
 async def handle_message(message: Message):
     query = message.text.strip()
-    status = await message.answer("🔍 Ищу треки, подожди...")
+    status = await message.answer("подожди...")
 
     tracks = []
     tracks += await search_skysound(query)
     tracks += await search_soundcloud(query)
 
     if not tracks:
-        await status.edit_text(f"«{query}» - ничего не найдено.")
+        await status.edit_text(f"«{query}» - ничего не найдено. Проверь правильность написания.")
         return
 
     # 🔍 Ранжируем по схожести
@@ -49,7 +49,7 @@ async def handle_message(message: Message):
     keyboard = build_tracks_keyboard(tracks, page=1)
 
     await status.edit_text(
-        "Выбери трек:",
+        "Выберите трек из списка:",
         reply_markup=keyboard.as_markup()
     )
 
@@ -74,7 +74,7 @@ async def play_track(callback: CallbackQuery):
         if track["source"] == "SoundCloud":
             mp3_url = await get_soundcloud_mp3_url(url)
             if not mp3_url:
-                await callback.message.edit_text("😔 Не удалось получить mp3")
+                await callback.message.edit_text("Не удалось получить mp3 =(")
                 return
 
         else:
@@ -85,7 +85,7 @@ async def play_track(callback: CallbackQuery):
             mp3_links = re.findall(r'https:\/\/[^\s"]+\.mp3', html)
             if not mp3_links:
                 print(f"🚫 [SkySound] mp3 не найден")
-                await callback.message.edit_text("😔 Не удалось получить mp3.")
+                await callback.message.edit_text("Не удалось получить mp3  =(")
                 return
             mp3_url = mp3_links[0]
 
