@@ -1,59 +1,76 @@
+import aiohttp
+import re
 from aiogram import Router
 from aiogram.types import InlineQuery, InlineQueryResultArticle, InputTextMessageContent, InlineKeyboardButton
-from aiogram.types import InlineKeyboardMarkup
-from app.database.requests import search_skysound, search_soundcloud, rank_tracks_by_similarity
+from aiogram.types import InlineKeyboardMarkup, InlineQueryResultAudio
+from app.database.requests import search_skysound, search_soundcloud, rank_tracks_by_similarity, get_soundcloud_mp3_url
+
+
 
 router = Router()
 
 user_tracks = {}
 
 @router.inline_query()
-async def inline_search(inline_query: InlineQuery):
-    query = inline_query.query.strip()
+async def inline_handler(query: InlineQuery):
+    q = query.query.strip()
+    if not q:
+        await query.answer([], cache_time=1)
+        return
 
-    if not query:
-        return await inline_query.answer([])
-
-    # Ищем треки
+    # --- Получаем треки как в обычном режиме ---
     tracks = []
-    tracks += await search_skysound(query)
-    tracks += await search_soundcloud(query)
+    tracks += await search_skysound(q)
+    tracks += await search_soundcloud(q)
 
     if not tracks:
-        return await inline_query.answer(
-            [],
-            switch_pm_text="Ничего не найдено",
-            switch_pm_parameter="start"
-        )
+        await query.answer([], cache_time=1, switch_pm_text="Ничего не найдено", switch_pm_parameter="start")
+        return
 
-    # Ранжируем
-    tracks = rank_tracks_by_similarity(query, tracks)
-
-    # Сохраняем в память под user_id
-    user_tracks[inline_query.from_user.id] = tracks
+    # --- Ранжирование как в твоем боте ---
+    tracks = rank_tracks_by_similarity(q, tracks)
 
     results = []
-    for i, track in enumerate(tracks[:25]):
-        title = f"{track['artist']} — {track['title']}"
 
-        results.append(
-            InlineQueryResultArticle(
-                id=str(i),
-                title=title,
-                description=track["source"],
-                input_message_content=InputTextMessageContent(
-                    message_text=f"🎵 <b>{title}</b>\nЗагружаю...",
+    # --- Полное повторение твоей mp3-логики для каждого результата ---
+    for i, track in enumerate(tracks[:25]):
+        artist = track["artist"]
+        title = track["title"]
+        url = track["url"]
+
+        try:
+            # --- Получение mp3 URL ---
+            if track["source"] == "SoundCloud":
+                mp3_url = await get_soundcloud_mp3_url(url)
+                if not mp3_url:
+                    continue
+            else:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url, timeout=15) as resp:
+                        html = await resp.text()
+                mp3_links = re.findall(r'https:\/\/[^\s"]+\.mp3', html)
+                if not mp3_links:
+                    continue
+                mp3_url = mp3_links[0]
+
+            # --- Длительность из твоей информации (если есть), иначе None ---
+            duration = track.get("duration") or None
+
+            # --- Формируем результат, который сразу отправляет аудио ---
+            results.append(
+                InlineQueryResultAudio(
+                    id=str(i),
+                    title=f"{artist} — {title}",
+                    audio_url=mp3_url,
+                    performer=artist,
+                    audio_duration=duration,
+                    caption=f'<a href="https://t.me/eschalon">eschalon</a>',
                     parse_mode="HTML"
-                ),
-                reply_markup=InlineKeyboardMarkup(
-                    inline_keyboard=[
-                        [InlineKeyboardButton(
-                            text="⬇️ Скачать",
-                            callback_data=f"play_{i}"
-                        )]
-                    ]
                 )
             )
-        )
 
-    await inline_query.answer(results, cache_time=1)
+        except Exception as e:
+            print("Ошибка в inline audio:", e)
+            continue
+
+    await query.answer(results, cache_time=1, is_personal=True)

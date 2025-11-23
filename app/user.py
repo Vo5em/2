@@ -20,7 +20,7 @@ file_01 = "AgACAgIAAxkBAAIE52kgt3bMrOFh_E8zC13pEFXhAco9AALjEGsbdTMAAUlnAmO6fj4n1
 @user.message(CommandStart())
 async def cmd_start(message: Message):
     await set_user(message.from_user.id)
-    await message.answer('Добро пожаловать в музыкальный архив eschalon.\nЗапросите исполнителя или трек.')
+    await message.answer('Добро пожаловать в музыкальный архив eschalon.\n\nЗапросите исполнителя или трек.')
 
 
 @user.message(F.text)
@@ -119,7 +119,7 @@ async def play_track(callback: CallbackQuery):
             caption= f'<a href="https://t.me/eschalon">eschalon</a>, <a href="t.me/eschalonmusicbot">music</a>',
             parse_mode="HTML"
         )
-        print(audio_bytes[:10])
+
 
     except Exception as e:
         print(f"💥 Ошибка при отправке трека: {e}")
