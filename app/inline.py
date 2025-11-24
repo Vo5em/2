@@ -129,15 +129,14 @@ async def inline_search(query: InlineQuery):
 # ========== CHOSEN (не блокируем UI) ==========
 @router.chosen_inline_result()
 async def chosen_inline(chosen: ChosenInlineResult):
-    # В chosen приходят: chosen.inline_message_id (если есть), chosen.inline_query_id
     inline_msg_id = chosen.inline_message_id
-    qid = chosen.inline_query_id
-    idx = int(chosen.result_id)
 
-    # Тихо выходим, если inline_message_id нет — ничего не сделать в этом чате
     if not inline_msg_id:
-        # можно отправить приватное уведомление пользователю о том, что в личке это не работает
         return
+
+    rid = chosen.result_id          # "612345:7"
+    qid, idx = rid.split(":")
+    idx = int(idx)
 
     tracks = user_tracks.get(qid)
     if not tracks:
@@ -145,7 +144,6 @@ async def chosen_inline(chosen: ChosenInlineResult):
 
     track = tracks[idx]
 
-    # Запускаем фоновую задачу — чтобы chosen_inline_handler вернулся быстро
     asyncio.create_task(_fetch_and_replace_audio(inline_msg_id, track))
 
 
