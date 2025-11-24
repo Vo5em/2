@@ -12,7 +12,8 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     InlineKeyboardButton,
     CallbackQuery,
-    Update
+    Update,
+    ChosenInlineResult
 )
 from app.database.requests import search_skysound, search_soundcloud, rank_tracks_by_similarity, get_soundcloud_mp3_url
 from app.database.requests import duration_to_seconds
@@ -60,7 +61,7 @@ async def inline_search(query: InlineQuery):
     await query.answer(results, cache_time=1)
 
 
-@router.chosen_inline_result(F.text.startswith("Подождите"))
+@router.message(F.text.startswith("Подождите"))
 async def handle_inline_audio(message: Message):
     text = message.text.split("\n", 1)
     if len(text) < 2:
@@ -133,3 +134,11 @@ async def handle_inline_audio(message: Message):
     except Exception as e:
         print("ИНЛАЙН ОШИБКА:", e)
         await message.edit_text("❌ Ошибка загрузки.")
+
+@router.chosen_inline_result()
+async def chosen_inline(chosen: ChosenInlineResult):
+    print("🔥 CHOSEN RESULT:")
+    print("query:", chosen.query)
+    print("result_id:", chosen.result_id)
+    print("from:", chosen.from_user.id)
+    print("inline_message_id:", chosen.inline_message_id)
