@@ -11,7 +11,8 @@ from aiogram.types import (
     InputTextMessageContent,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
-    CallbackQuery
+    CallbackQuery,
+    Update
 )
 from app.database.requests import search_skysound, search_soundcloud, rank_tracks_by_similarity, get_soundcloud_mp3_url
 from app.database.requests import duration_to_seconds
@@ -132,3 +133,7 @@ async def handle_inline_audio(message: Message):
     except Exception as e:
         print("ИНЛАЙН ОШИБКА:", e)
         await message.edit_text("❌ Ошибка загрузки.")
+
+@router.update()
+async def debug_all(update: Update):
+    print("UPDATE:", update.model_dump())

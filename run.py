@@ -15,7 +15,7 @@ from app.database.models import async_main
 
 async def main():
     dp = Dispatcher()
-    dp.include_routers(user, admin, router)
+    dp.include_routers(user, router, admin)
     dp.startup.register(startup)
     bot = Bot(token=TOKEN)
 
