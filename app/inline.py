@@ -60,7 +60,7 @@ async def inline_search(query: InlineQuery):
     await query.answer(results, cache_time=1)
 
 
-@router.message(F.text.startswith("Подождите"))
+@router.chosen_inline_result(F.text.startswith("Подождите"))
 async def handle_inline_audio(message: Message):
     text = message.text.split("\n", 1)
     if len(text) < 2:
