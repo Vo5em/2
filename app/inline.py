@@ -1,23 +1,17 @@
-import uuid
 import re
 import tempfile
 import aiohttp
-from aiogram import Router, F, Bot
+from aiogram import Router
 from aiogram.types import (
     InlineQuery,
     FSInputFile,
-    Message,
     InlineQueryResultArticle,
     InputTextMessageContent,
     InputMediaAudio,
-    InlineKeyboardMarkup,
-    InlineKeyboardButton,
-    CallbackQuery,
-    Update,
     ChosenInlineResult
 )
 from app.database.requests import search_skysound, search_soundcloud, rank_tracks_by_similarity, get_soundcloud_mp3_url
-from app.database.requests import duration_to_seconds
+from config import bot
 
 
 router = Router()
@@ -63,7 +57,7 @@ async def inline_search(query: InlineQuery):
 
 
 @router.chosen_inline_result()
-async def chosen_inline(chosen: ChosenInlineResult, bot: Bot):
+async def chosen_inline(chosen: ChosenInlineResult, bot: bot):
     print("🔥 CHOSEN RESULT:")
     print("query:", chosen.query)
     print("result_id:", chosen.result_id)
