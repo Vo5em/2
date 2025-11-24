@@ -2,13 +2,14 @@ import uuid
 import re
 import tempfile
 import aiohttp
-from aiogram import Router, F
+from aiogram import Router, F, Bot
 from aiogram.types import (
     InlineQuery,
     FSInputFile,
     Message,
     InlineQueryResultArticle,
     InputTextMessageContent,
+    InputMediaAudio,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
     CallbackQuery,
@@ -61,30 +62,31 @@ async def inline_search(query: InlineQuery):
     await query.answer(results, cache_time=1)
 
 
-@router.message(F.text.startswith("Подождите"))
-async def handle_inline_audio(message: Message):
-    text = message.text.split("\n", 1)
-    if len(text) < 2:
-        return
+@router.chosen_inline_result()
+async def chosen_inline(chosen: ChosenInlineResult, bot: Bot):
+    print("🔥 CHOSEN RESULT:")
+    print("query:", chosen.query)
+    print("result_id:", chosen.result_id)
+    print("from:", chosen.from_user.id)
+    print("inline_message_id:", chosen.inline_message_id)
 
-    full_title = text[1].strip()
-    user_id = message.from_user.id
+    user_id = chosen.from_user.id
+    idx = int(chosen.result_id)
 
     if user_id not in user_tracks:
         return
 
-    selected_track = None
-    for t in user_tracks[user_id]:
-        if f"{t['artist']} — {t['title']}" == full_title:
-            selected_track = t
-            break
-
-    if not selected_track:
-        await message.edit_text("❌ Трек не найден.")
-        return
-
-    track = selected_track
+    track = user_tracks[user_id][idx]
     url = track["url"]
+
+    # ---- сначала редактируем заглушку, чтобы пользователь видел прогресс ----
+    try:
+        await bot.edit_message_text(
+            inline_message_id=chosen.inline_message_id,
+            text="Загружаю аудио…"
+        )
+    except:
+        pass
 
     try:
         # === получаем mp3 URL ===
@@ -98,7 +100,10 @@ async def handle_inline_audio(message: Message):
             mp3_url = mp3_links[0] if mp3_links else None
 
         if not mp3_url:
-            await message.edit_text("❌ MP3 не найден.")
+            await bot.edit_message_text(
+                inline_message_id=chosen.inline_message_id,
+                text="❌ MP3 не найден."
+            )
             return
 
         # === скачиваем mp3 ===
@@ -111,34 +116,37 @@ async def handle_inline_audio(message: Message):
                 audio_bytes = await resp.read()
 
         if len(audio_bytes) < 50000:
-            await message.edit_text("❌ Файл повреждён.")
+            await bot.edit_message_text(
+                inline_message_id=chosen.inline_message_id,
+                text="❌ Файл повреждён."
+            )
             return
 
+        # === временный файл ===
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:
             tmp.write(audio_bytes)
             tmp_path = tmp.name
 
+        # === готовим аудио ===
         audio = FSInputFile(tmp_path, filename=f"{track['artist']} — {track['title']}.mp3")
         thumb = FSInputFile("ttumb.jpg")
 
-        await message.delete()
-        await message.answer_audio(
-            audio=audio,
-            title=track['title'],
-            performer=track['artist'],
-            thumb=thumb,
-            caption=f'<a href="https://t.me/eschalon">eschalon</a>, <a href="t.me/eschalonmusicbot">music</a>',
-            parse_mode="HTML"
+        # === заменяем заглушку на аудио ===
+        await bot.edit_message_media(
+            inline_message_id=chosen.inline_message_id,
+            media=InputMediaAudio(
+                media=audio,
+                title=track['title'],
+                performer=track['artist'],
+                caption='<a href="https://t.me/eschalon">eschalon</a>, <a href="t.me/eschalonmusicbot">music</a>',
+                parse_mode="HTML",
+                thumb=thumb
+            )
         )
 
     except Exception as e:
         print("ИНЛАЙН ОШИБКА:", e)
-        await message.edit_text("❌ Ошибка загрузки.")
-
-@router.chosen_inline_result()
-async def chosen_inline(chosen: ChosenInlineResult):
-    print("🔥 CHOSEN RESULT:")
-    print("query:", chosen.query)
-    print("result_id:", chosen.result_id)
-    print("from:", chosen.from_user.id)
-    print("inline_message_id:", chosen.inline_message_id)
+        await bot.edit_message_text(
+            inline_message_id=chosen.inline_message_id,
+            text="❌ Ошибка загрузки."
+        )
