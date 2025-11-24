@@ -134,7 +134,6 @@ async def chosen_inline(chosen: ChosenInlineResult, bot: bot):
             audio=audio,
             performer=track['artist'],
             title=track['title'],
-            thumb=thumb,
             caption='<a href="https://t.me/eschalon">eschalon</a>, <a href="t.me/eschalonmusicbot">music</a>',
             parse_mode="HTML"
         )
