@@ -1,5 +1,4 @@
 import re
-import asyncio
 import aiohttp
 import tempfile
 from aiogram import Router
@@ -8,7 +7,6 @@ from aiogram.types import (
     InlineQueryResultArticle,
     InputTextMessageContent,
     ChosenInlineResult,
-    InputMediaAudio,
     FSInputFile
 )
 from config import bot
@@ -27,49 +25,44 @@ user_tracks = {}
 # =========================
 @router.inline_query()
 async def inline_search(query: InlineQuery):
-    q = query.query.strip()
+    text = query.query.strip()
 
-    if not q:
-        await query.answer([], cache_time=0)
-        return
+    if not text:
+        return await query.answer([], cache_time=1)
 
-
-    print("INLINE SEARCH:", q)
-
-    # быстрый поиск
     tracks = []
-    tracks += await search_skysound(q)
-    tracks += await search_soundcloud(q)
+    tracks += await search_skysound(text)
+    tracks += await search_soundcloud(text)
 
     if not tracks:
-        await query.answer([], cache_time=0)
-        return
+        return await query.answer([], cache_time=1)
 
-    # сортировка по совпадению
-    tracks = rank_tracks_by_similarity(q, tracks)
+    tracks = rank_tracks_by_similarity(text, tracks)
 
-    # сохраняем результаты для chosen_inline_result
+    # сохраняем треки для пользователя
     user_tracks[query.from_user.id] = tracks
 
     results = []
-    for idx, t in enumerate(tracks[:20]):
-        title = f"{t['artist']} — {t['title']}"
-
+    for i, tr in enumerate(tracks[:20]):
+        title = f"{tr['artist']} — {tr['title']}"
         results.append(
             InlineQueryResultArticle(
-                id=str(idx),
+                id=str(i),
                 title=title,
-                description=f"⏱ {t['duration']}",
+                description=f"⏱ {tr['duration']}",
                 input_message_content=InputTextMessageContent(
-                    message_text=f"⏳ Загружаю...\n{title}"
+                    message_text=f"⏳ Загружаю трек...\n{title}"
                 )
             )
         )
 
-    await query.answer(results, cache_time=0)
+    await query.answer(results, cache_time=1)
 
 
 
+# ==========================
+#    SEND AUDIO DIRECTLY
+# ==========================
 @router.chosen_inline_result()
 async def chosen_inline(chosen: ChosenInlineResult, bot: bot):
     user_id = chosen.from_user.id
@@ -81,52 +74,60 @@ async def chosen_inline(chosen: ChosenInlineResult, bot: bot):
     track = user_tracks[user_id][idx]
     url = track["url"]
 
+    # Отправляем сообщение что началась загрузка
+    loading_msg = await bot.send_message(
+        chat_id=user_id,
+        text=f"🎧 Загружаю:\n<b>{track['artist']} — {track['title']}</b>",
+        parse_mode="HTML"
+    )
+
     try:
-        # === 1. получаем mp3 url ===
+        # --- Получаем mp3 URL ---
         if track["source"] == "SoundCloud":
             mp3_url = await get_soundcloud_mp3_url(url)
         else:
+            # SkySound: ищем mp3 ссылку в html
             async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=15) as resp:
-                    html = await resp.text()
-            mp3_links = re.findall(r'https:\/\/[^\s"]+\.mp3', html)
-            mp3_url = mp3_links[0] if mp3_links else None
+                async with session.get(url, timeout=15) as r:
+                    html = await r.text()
+            links = re.findall(r'https:\/\/[^\s"]+\.mp3', html)
+            mp3_url = links[0] if links else None
 
         if not mp3_url:
-            await bot.send_message(user_id, "❌ MP3 не найден.")
-            return
+            return await loading_msg.edit_text("❌ mp3 не найден")
 
-        # === 2. скачиваем mp3 ===
+        # --- Качаем mp3 ---
         headers = {
             "User-Agent": "Mozilla/5.0",
-            "Referer": "https://soundcloud.com/" if track["source"] == "SoundCloud" else "https://skysound7.com/"
         }
 
         async with aiohttp.ClientSession() as session:
-            async with session.get(mp3_url, headers=headers, timeout=30) as resp:
-                audio_bytes = await resp.read()
+            async with session.get(mp3_url, headers=headers, timeout=30) as r:
+                audio_bytes = await r.read()
 
         if len(audio_bytes) < 50000:
-            await bot.send_message(user_id, "❌ Файл повреждён.")
-            return
+            return await loading_msg.edit_text("❌ повреждённый файл")
 
-        # === 3. сохраняем файл ===
+        # временный файл
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:
             tmp.write(audio_bytes)
-            mp3_path = tmp.name
+            path = tmp.name
 
-        audio = FSInputFile(mp3_path)
+        audio = FSInputFile(path)
 
-        # === 4. ВАЖНО: сразу отправляем аудио (БЕЗ edit) ===
+        # --- ОТПРАВЛЯЕМ АУДИО ---
         await bot.send_audio(
             chat_id=user_id,
             audio=audio,
-            performer=track['artist'],
-            title=track['title'],
+            performer=track["artist"],
+            title=track["title"],
             caption='<a href="https://t.me/eschalon">eschalon</a>',
             parse_mode="HTML"
         )
 
+        # удаляем сообщение "загружаю"
+        await loading_msg.delete()
+
     except Exception as e:
-        print("❌ ERROR:", e)
-        await bot.send_message(user_id, "❌ Ошибка загрузки трека.")
+        await loading_msg.edit_text("❌ ошибка загрузки")
+        print("ERROR:", e)
