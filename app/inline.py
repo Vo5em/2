@@ -59,19 +59,18 @@ async def inline_search(query: InlineQuery):
     await query.answer(results, cache_time=1)
 
 
-@router.message(F.via_bot)
+@router.message(F.text.startswith("⏳"))
 async def handle_inline_audio(message: Message):
-    # формат текста: "⏳ Подождите...\nArtist — Title"
     text = message.text.split("\n", 1)
     if len(text) < 2:
         return
 
     full_title = text[1].strip()
     user_id = message.from_user.id
+
     if user_id not in user_tracks:
         return
 
-    # ищем по названию
     selected_track = None
     for t in user_tracks[user_id]:
         if f"{t['artist']} — {t['title']}" == full_title:
@@ -120,7 +119,6 @@ async def handle_inline_audio(message: Message):
         audio = FSInputFile(tmp_path, filename=f"{track['artist']} — {track['title']}.mp3")
         thumb = FSInputFile("ttumb.jpg")
 
-        # === заменяем сообщение на аудио ===
         await message.delete()
         await message.answer_audio(
             audio=audio,
