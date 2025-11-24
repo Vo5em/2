@@ -133,7 +133,3 @@ async def handle_inline_audio(message: Message):
     except Exception as e:
         print("ИНЛАЙН ОШИБКА:", e)
         await message.edit_text("❌ Ошибка загрузки.")
-
-@router.update()
-async def debug_all(update: Update):
-    print("UPDATE:", update.model_dump())
