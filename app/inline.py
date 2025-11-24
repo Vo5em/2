@@ -3,8 +3,12 @@ import aiohttp
 from aiogram import Router
 from aiogram.types import (
     InlineQuery,
-    InlineQueryResultAudio,
+    InlineQueryResultArticle,
+    InputTextMessageContent,
+    ChosenInlineResult,
+    InputMediaAudio
 )
+from config import bot
 from app.database.requests import (
     search_skysound,
     search_soundcloud,
@@ -13,6 +17,8 @@ from app.database.requests import (
 )
 
 router = Router()
+
+user_tracks = {}
 
 # ===================== INLINE ======================
 @router.inline_query()
@@ -23,7 +29,7 @@ async def inline_search(query: InlineQuery):
         await query.answer([], cache_time=1)
         return
 
-    # --- Ищем треки ---
+    # быстрый поиск — только названия, без MP3
     tracks = []
     tracks += await search_skysound(text)
     tracks += await search_soundcloud(text)
@@ -32,42 +38,58 @@ async def inline_search(query: InlineQuery):
         await query.answer([], cache_time=1)
         return
 
-    # Сортировка по похожести
     tracks = rank_tracks_by_similarity(text, tracks)
 
+    user_tracks[query.from_user.id] = tracks  # сохраняем только метаданные
+
     results = []
+    for idx, t in enumerate(tracks[:20]):
+        title = f"{t['artist']} — {t['title']}"
 
-    # Строим только InlineQueryResultAudio
-    for idx, track in enumerate(tracks[:20]):
-
-        # === Получаем прямой MP3 URL заранее ===
-        if track["source"] == "SoundCloud":
-            mp3_url = await get_soundcloud_mp3_url(track["url"])
-        else:
-            # html парсинг mp3 ссылки
-            async with aiohttp.ClientSession() as session:
-                async with session.get(track["url"], timeout=10) as resp:
-                    html = await resp.text()
-            mp3_links = re.findall(r'https:\/\/[^\s"]+\.mp3', html)
-            mp3_url = mp3_links[0] if mp3_links else None
-
-        if not mp3_url:
-            continue
-
-        # === InlineQueryResultAudio ===
         results.append(
-            InlineQueryResultAudio(
+            InlineQueryResultArticle(
                 id=str(idx),
-                audio_url=mp3_url,
-                title=track["title"],
-                performer=track["artist"],
-                caption='<a href="https://t.me/eschalon">eschalon</a>, <a href="t.me/eschalonmusicbot">music</a>',
-                parse_mode="HTML",
+                title=title,
+                description=f"⏱ {t['duration']}",
+                input_message_content=InputTextMessageContent(
+                    message_text=f"⏬ Загружаю трек...\n{title}",
+                )
             )
         )
 
-    await query.answer(
-        results,
-        cache_time=1,
-        is_personal=True
-    )
+    await query.answer(results, cache_time=0)
+
+
+@router.chosen_inline_result()
+async def chosen(chosen: ChosenInlineResult):
+    user_id = chosen.from_user.id
+    idx = int(chosen.result_id)
+
+    if user_id not in user_tracks:
+        return
+
+    track = user_tracks[user_id][idx]
+
+    # получаем mp3 URL (теперь можно медленно)
+    if track["source"] == "SoundCloud":
+        mp3_url = await get_soundcloud_mp3_url(track["url"])
+    else:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(track["url"]) as resp:
+                html = await resp.text()
+        mp3_links = re.findall(r'https:\/\/[^\s"]+\.mp3', html)
+        mp3_url = mp3_links[0] if mp3_links else None
+
+    if not mp3_url:
+        return
+
+    # отправляем аудио туда, где был inline → via inline_message_id
+    if chosen.inline_message_id:
+        await bot.edit_message_media(
+            inline_message_id=chosen.inline_message_id,
+            media=InputMediaAudio(
+                media=mp3_url,
+                title=track["title"],
+                performer=track["artist"]
+            )
+        )
