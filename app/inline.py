@@ -78,24 +78,24 @@ async def chosen_inline(chosen: ChosenInlineResult):
     user_id = chosen.from_user.id
     idx = int(chosen.result_id)
 
-    print("🔥 chosen_inline:", chosen.result_id)
-
-    # проверяем есть ли результаты
     if user_id not in user_tracks:
-        print("❌ Нет сохранённых треков")
         return
 
     track = user_tracks[user_id][idx]
 
-    # Временно сообщение
-    temp = await bot.send_message(
-        user_id,
-        f"⏳ Загружаю трек...\n<b>{track['artist']} — {track['title']}</b>",
-        parse_mode="HTML"
+    msg_id = chosen.inline_message_id
+    if not msg_id:
+        print("❌ inline_message_id отсутствует, нельзя редактировать сообщение")
+        return
+
+    # 1) Поставим временный текст в том же сообщении
+    await bot.edit_message_text(
+        inline_message_id=msg_id,
+        text=f"⏳ Загружаю...\n{track['artist']} — {track['title']}"
     )
 
     try:
-        # === получаем mp3 URL ===
+        # === загрузка MP3 ===
         url = track["url"]
 
         if track["source"] == "SoundCloud":
@@ -109,9 +109,8 @@ async def chosen_inline(chosen: ChosenInlineResult):
 
         if not mp3_url:
             await bot.edit_message_text(
-                "❌ MP3 не найден.",
-                user_id,
-                temp.message_id
+                inline_message_id=msg_id,
+                text="❌ MP3 не найден."
             )
             return
 
@@ -126,36 +125,32 @@ async def chosen_inline(chosen: ChosenInlineResult):
 
         if len(audio_bytes) < 50000:
             await bot.edit_message_text(
-                "❌ Файл повреждён.",
-                user_id,
-                temp.message_id
+                inline_message_id=msg_id,
+                text="❌ Файл повреждён."
             )
             return
 
-        # временный файл
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as f:
             f.write(audio_bytes)
             mp3_path = f.name
 
         audio = FSInputFile(mp3_path)
 
-        # ПОДМЕНА текста → аудио
+        # 2) ПОДМЕНА ТЕКСТА → АУДИО
         await bot.edit_message_media(
-            chat_id=user_id,
-            message_id=temp.message_id,
+            inline_message_id=msg_id,
             media=InputMediaAudio(
                 media=audio,
-                performer=track['artist'],
                 title=track['title'],
+                performer=track['artist'],
                 caption='<a href="https://t.me/eschalon">eschalon</a>',
                 parse_mode="HTML"
             )
         )
 
     except Exception as e:
-        print("❌ Ошибка:", e)
+        print("❌ ERROR:", e)
         await bot.edit_message_text(
-            "❌ Ошибка загрузки.",
-            user_id,
-            temp.message_id
+            inline_message_id=msg_id,
+            text="❌ Ошибка загрузки."
         )
