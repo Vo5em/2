@@ -14,7 +14,7 @@ from app.database.models import async_main
 
 
 async def main():
-    dp = Dispatcher()
+    dp = Dispatcher(allow_bot_messages=True)
     dp.include_routers(user, router, admin)
     dp.startup.register(startup)
     bot = Bot(token=TOKEN)
