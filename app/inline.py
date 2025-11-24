@@ -68,19 +68,21 @@ async def chosen_inline(chosen: ChosenInlineResult, bot: bot):
     idx = int(chosen.result_id)
 
     if user_id not in user_tracks:
+        print("❌ Нет сохранённых результатов поиска.")
         return
 
     track = user_tracks[user_id][idx]
     url = track["url"]
 
-    # ---- сначала редактируем заглушку, чтобы пользователь видел прогресс ----
+    # === отправляем сообщение пользователю в ЛС ===
     try:
-        await bot.edit_message_text(
-            inline_message_id=chosen.inline_message_id,
-            text="Загружаю аудио…"
+        await bot.send_message(
+            chat_id=user_id,
+            text=f"🎧 Загружаю трек:\n<b>{track['artist']} — {track['title']}</b>",
+            parse_mode="HTML"
         )
-    except:
-        pass
+    except Exception as e:
+        print("⚠ Не удалось отправить сообщение пользователю:", e)
 
     try:
         # === получаем mp3 URL ===
@@ -94,8 +96,8 @@ async def chosen_inline(chosen: ChosenInlineResult, bot: bot):
             mp3_url = mp3_links[0] if mp3_links else None
 
         if not mp3_url:
-            await bot.edit_message_text(
-                inline_message_id=chosen.inline_message_id,
+            await bot.send_message(
+                chat_id=user_id,
                 text="❌ MP3 не найден."
             )
             return
@@ -105,13 +107,14 @@ async def chosen_inline(chosen: ChosenInlineResult, bot: bot):
             "User-Agent": "Mozilla/5.0",
             "Referer": "https://soundcloud.com/" if track["source"] == "SoundCloud" else "https://skysound7.com/"
         }
+
         async with aiohttp.ClientSession() as session:
             async with session.get(mp3_url, headers=headers, timeout=30) as resp:
                 audio_bytes = await resp.read()
 
         if len(audio_bytes) < 50000:
-            await bot.edit_message_text(
-                inline_message_id=chosen.inline_message_id,
+            await bot.send_message(
+                chat_id=user_id,
                 text="❌ Файл повреждён."
             )
             return
@@ -121,26 +124,24 @@ async def chosen_inline(chosen: ChosenInlineResult, bot: bot):
             tmp.write(audio_bytes)
             tmp_path = tmp.name
 
-        # === готовим аудио ===
+        # === Готовим аудио ===
         audio = FSInputFile(tmp_path, filename=f"{track['artist']} — {track['title']}.mp3")
         thumb = FSInputFile("ttumb.jpg")
 
-        # === заменяем заглушку на аудио ===
-        await bot.edit_message_media(
-            inline_message_id=chosen.inline_message_id,
-            media=InputMediaAudio(
-                media=audio,
-                title=track['title'],
-                performer=track['artist'],
-                caption='<a href="https://t.me/eschalon">eschalon</a>, <a href="t.me/eschalonmusicbot">music</a>',
-                parse_mode="HTML",
-                thumb=thumb
-            )
+        # === отправляем в личку ===
+        await bot.send_audio(
+            chat_id=user_id,
+            audio=audio,
+            performer=track['artist'],
+            title=track['title'],
+            thumb=thumb,
+            caption='<a href="https://t.me/eschalon">eschalon</a>, <a href="t.me/eschalonmusicbot">music</a>',
+            parse_mode="HTML"
         )
 
     except Exception as e:
-        print("ИНЛАЙН ОШИБКА:", e)
-        await bot.edit_message_text(
-            inline_message_id=chosen.inline_message_id,
-            text="❌ Ошибка загрузки."
+        print("❌ Ошибка загрузки:", e)
+        await bot.send_message(
+            chat_id=user_id,
+            text="❌ Ошибка загрузки трека."
         )
