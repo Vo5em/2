@@ -288,23 +288,65 @@ def rank_tracks_by_similarity(query: str, tracks: list):
     return sorted_tracks
 
 
-def duration_to_seconds(d):
-    if not d:
-        return None
+async def download_track(track):
+    """
+    track = {
+        "source": "SoundCloud" / "SkySound",
+        "url": "...",
+        "artist": "...",
+        "title": "..."
+    }
+    """
+    url = track["url"]
 
-    if isinstance(d, int):
-        return d
-
-    if ":" in d:
-        try:
-            m, s = d.split(":")
-            return int(m) * 60 + int(s)
-        except:
-            return None
-
-    # если пришло что-то странное — игнорируем
     try:
-        return int(d)
-    except:
+        mp3_url = None
+
+        # --------------------------
+        # 1. SoundCloud
+        # --------------------------
+        if track["source"] == "SoundCloud":
+            mp3_url = await get_soundcloud_mp3_url(url)
+            if not mp3_url:
+                raise Exception("Не удалось получить mp3_url от SoundCloud")
+
+        # --------------------------
+        # 2. SkySound
+        # --------------------------
+        else:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=15) as resp:
+                    html = await resp.text()
+
+            mp3_links = re.findall(r'https:\/\/[^\s"]+\.mp3', html)
+            if not mp3_links:
+                raise Exception("MP3 не найден на SkySound")
+            mp3_url = mp3_links[0]
+
+        # --------------------------
+        # 3. Качаем файл MP3
+        # --------------------------
+        headers = {
+            "User-Agent": "Mozilla/5.0",
+            "Referer": (
+                "https://soundcloud.com/"
+                if track["source"] == "SoundCloud"
+                else "https://skysound7.com/"
+            )
+        }
+
+        async with aiohttp.ClientSession() as session:
+            async with session.get(mp3_url, headers=headers, timeout=30) as resp:
+                if resp.status != 200:
+                    raise Exception(f"Ошибка HTTP {resp.status}")
+                audio_bytes = await resp.read()
+
+        if len(audio_bytes) < 50000:
+            raise Exception("Файл слишком маленький / повреждён")
+
+        return audio_bytes
+
+    except Exception as e:
+        print("❌ Ошибка в download_track():", e)
         return None
 
