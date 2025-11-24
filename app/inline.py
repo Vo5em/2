@@ -51,7 +51,7 @@ async def inline_search(query: InlineQuery):
                 title=title,
                 description=f"⏱ {track['duration']}",
                 input_message_content=InputTextMessageContent(
-                    message_text=f"⏳ Подождите...\n{title}",
+                    message_text=f"Подождите...\n{title}",
                 )
             )
         )
@@ -59,7 +59,7 @@ async def inline_search(query: InlineQuery):
     await query.answer(results, cache_time=1)
 
 
-@router.message(F.text.startswith("⏳"))
+@router.message(F.text.startswith("Подождите"))
 async def handle_inline_audio(message: Message):
     text = message.text.split("\n", 1)
     if len(text) < 2:
