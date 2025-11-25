@@ -10,6 +10,7 @@ from aiogram.types import (
     ChosenInlineResult,
     InlineQueryResultAudio,
     InlineQueryResultCachedDocument,
+    BufferedInputFile,
     FSInputFile
 )
 from config import bot
@@ -88,55 +89,51 @@ async def inline_search_fast(query: InlineQuery):
         await query.answer([], cache_time=0)
         return
 
-    tracks = []
-    try:
-        tracks += await search_skysound(q)
-        tracks += await search_soundcloud(q)
-    except:
-        await query.answer([], cache_time=0)
-        return
-
+    tracks = await search_soundcloud(q) + await search_skysound(q)
     if not tracks:
         await query.answer([], cache_time=0)
         return
 
-    tracks = rank_tracks_by_similarity(q, tracks)[:5]
+    tracks = rank_tracks_by_similarity(q, tracks)
+    track = tracks[0]  # берём лучший
 
-    results = []
+    mp3_url = await _extract_mp3_url(track)
+    if not mp3_url:
+        await query.answer([], cache_time=0)
+        return
 
-    for idx, track in enumerate(tracks):
+    # Качаем MP3
+    async with aiohttp.ClientSession() as session:
+        async with session.get(mp3_url) as resp:
+            audio_bytes = await resp.read()
 
-        mp3_url = await _extract_mp3_url(track)
-        if not mp3_url:
-            continue
+    # Качаем обложку (если есть)
+    cover_file = None
+    if track.get("cover"):
+        async with aiohttp.ClientSession() as session:
+            async with session.get(track["cover"]) as resp:
+                cover_bytes = await resp.read()
 
-        # === скачиваем mp3 ===
-        async with aiohttp.ClientSession() as sess:
-            async with sess.get(mp3_url) as resp:
-                if resp.status != 200:
-                    continue
-                mp3_bytes = await resp.read()
+        cover_file = BufferedInputFile(cover_bytes, filename="cover.jpg")
 
-        # === загружаем mp3 в Telegram ===
-        audio_msg = await bot.send_document(
-            chat_id=query.from_user.id,
-            document=("track.mp3", mp3_bytes),
-            caption=".",
-            disable_notification=True
+    audio_file = BufferedInputFile(audio_bytes, filename="track.mp3")
+
+    # INLINE RESULT — с обложкой НЕ РАБОТАЕТ, Telegram не поддерживает.
+    # Поэтому делаем хитрость — отправляем аудио СРАЗУ пользователю:
+
+    await bot.send_audio(
+        chat_id=query.from_user.id,
+        audio=audio_file,
+        performer=track["artist"],
+        title=track["title"],
+        thumb=cover_file
+    )
+
+    # А в inline просто показываем кнопочку "Отправлено!"
+    await query.answer([
+        InlineQueryResultArticle(
+            id="done",
+            title="Трек загружен",
+            input_message_content=InputTextMessageContent("✔ Трек отправлен вам в личку")
         )
-
-        file_id = audio_msg.document.file_id
-
-        # === формируем inline результат ===
-        results.append(
-            InlineQueryResultCachedDocument(
-                id=str(idx),
-                title=f"{track['artist']} — {track['title']}",
-                document_file_id=file_id,
-                description=track["title"],
-                caption=f"{track['artist']} — {track['title']}",
-                thumb_file_id=track["cover" ]
-            )
-        )
-
-    await query.answer(results, cache_time=0, is_personal=True)
+    ], cache_time=0)
