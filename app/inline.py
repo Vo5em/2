@@ -6,6 +6,7 @@ from aiogram.types import (
     InlineQuery,
     InlineQueryResultArticle,
     InputTextMessageContent,
+    InlineQueryResultCachedAudio,
     Message,
     CallbackQuery,
     InlineKeyboardMarkup,
@@ -19,7 +20,7 @@ from app.database.requests import (
 
 
 router = Router()
-user_tracks = {}
+audio_cache = {}
 
 # -------- INLINE SEARCH ------------
 # Параметры таймаутов — уменьши, если хочешь ещё быстрее, но риск пропустить треки вырастет
@@ -91,10 +92,20 @@ async def inline_search(query: InlineQuery):
     results = []
 
     for idx, track in enumerate(tracks[:30]):
+        track_id = track["url"]
 
-        # сохраняем трек по user_id + index
-        user_tracks[(query.from_user.id, idx)] = track
+        # Если файл уже загружен в Telegram – выдаём сразу
+        if track_id in audio_cache:
+            results.append(
+                InlineQueryResultCachedAudio(
+                    id=str(idx),
+                    audio_file_id=audio_cache[track_id],
+                    caption=f"{track['artist']} — {track['title']}"
+                )
+            )
+            continue
 
+        # Если файла нет в кэше — показываем “заглушку результата”
         results.append(
             InlineQueryResultArticle(
                 id=str(idx),
@@ -102,50 +113,10 @@ async def inline_search(query: InlineQuery):
                 description=track["duration"],
                 thumbnail_url=track.get("thumb"),
                 input_message_content=InputTextMessageContent(
-                    message_text=f"__load_track__:{idx}"   # ← payload, скрытое сообщение
+                    message_text=f"__load_track__:{idx}"
                 )
             )
         )
 
     await query.answer(results, cache_time=0)
-
-@router.message(F.text.startswith("__load_track__:"))
-async def send_chosen_track(msg: Message):
-    user_id = msg.from_user.id
-    idx = int(msg.text.split(":")[1])
-
-    track = user_tracks.get((user_id, idx))
-    if not track:
-        return await msg.answer("❌ Трек не найден. Попробуй снова.")
-
-    await msg.edit_text(f"🎧 Загружаю: {track['artist']} — {track['title']}")
-
-    # Получаем mp3 URL
-    mp3_url = await _extract_mp3_url(track)
-    if not mp3_url:
-        return await msg.answer("❌ Не удалось получить mp3.")
-
-    # Скачиваем файл
-    async with aiohttp.ClientSession() as session:
-        async with session.get(mp3_url) as resp:
-            audio_bytes = await resp.read()
-
-    # Заворачиваем в файл
-    import io
-    from aiogram.types import FSInputFile
-    bio = io.BytesIO(audio_bytes)
-    bio.name = "track.mp3"
-
-    audio_file = FSInputFile(bio)
-
-    # Ваша обложка
-    thumb = FSInputFile("ttumb.jpg")
-
-    # Отправляем аудио
-    await msg.answer_audio(
-        audio=audio_file,
-        performer=track["artist"],
-        title=track["title"],
-        thumbnail=thumb
-    )
 
