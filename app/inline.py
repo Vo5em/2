@@ -11,6 +11,7 @@ from aiogram.types import (
     Message,
     CallbackQuery,
     InlineKeyboardMarkup,
+    InlineQueryResultAudio,
     InlineKeyboardButton,
     FSInputFile
 )
@@ -93,32 +94,34 @@ async def inline_search(query: InlineQuery):
 
     results = []
 
-    for idx, track in enumerate(tracks[:30]):
-        track_id = track["url"]
+    for idx, track in enumerate(tracks[:20]):   # 20 результатов чтобы быстрее
+        # Пытаемся сразу получить прямой mp3
+        mp3_url = await _extract_mp3_url(track)
 
-        # Если файл уже загружен в Telegram – выдаём сразу
-        if track_id in user_tracks:
+        if mp3_url:
+            # Если есть прямой mp3 — отдаём сразу аудио
             results.append(
-                InlineQueryResultCachedAudio(
+                InlineQueryResultAudio(
                     id=str(idx),
-                    audio_file_id=user_tracks[track_id],
-                    caption=f"{track['artist']} — {track['title']}"
+                    audio_url=mp3_url,
+                    title=track["title"],
+                    performer=track["artist"],
+                    thumbnail_url=track.get("thumb")  # твоя обложка в inline
                 )
             )
-            continue
-
-        # Если файла нет в кэше — показываем “заглушку результата”
-        results.append(
-            InlineQueryResultArticle(
-                id=str(idx),
-                title=f"{track['artist']} — {track['title']}",
-                description=track["duration"],
-                thumbnail_url=track.get("thumb"),
-                input_message_content=InputTextMessageContent(
-                    message_text=f"__load_track__:{idx}"
+        else:
+            # если mp3 нет — показываем без возможности отправить
+            results.append(
+                InlineQueryResultArticle(
+                    id=f"nf{idx}",
+                    title=f"{track['artist']} — {track['title']}",
+                    description="MP3 не найден",
+                    thumbnail_url=track.get("thumb"),
+                    input_message_content=InputTextMessageContent(
+                        message_text="❌ Не удалось получить mp3"
+                    )
                 )
             )
-        )
 
     await query.answer(results, cache_time=0)
 
