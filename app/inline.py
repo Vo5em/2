@@ -1,16 +1,18 @@
+import io
 import re
 import tempfile
 import asyncio
 import aiohttp
-from aiogram import Router
+from aiogram import Router, F
 from aiogram.types import (
     InlineQuery,
     InlineQueryResultArticle,
     InputTextMessageContent,
     ChosenInlineResult,
+    CallbackQuery,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
     InlineQueryResultAudio,
-    InlineQueryResultCachedDocument,
-    BufferedInputFile,
     FSInputFile
 )
 from config import bot
@@ -83,61 +85,78 @@ async def _extract_mp3_url(track: dict) -> str | None:
 
 
 @router.inline_query()
-async def inline_search_fast(query: InlineQuery):
+async def inline_search(query: InlineQuery):
     q = query.query.strip()
     if not q:
         await query.answer([], cache_time=0)
         return
 
-    tracks = await search_soundcloud(q) + await search_skysound(q)
-    if not tracks:
-        await query.answer([], cache_time=0)
-        return
+    # Поиск
+    tracks = []
+    tracks += await search_soundcloud(q)
+    tracks += await search_skysound(q)
 
-    tracks = rank_tracks_by_similarity(q, tracks)
-    track = tracks[0]  # берём лучший
+    # сохраняем результаты для callback
+    user_tracks[query.id] = tracks
 
+    results = []
+
+    for idx, track in enumerate(tracks[:30]):
+        thumb_url = track.get("thumb") or track.get("artwork") or None
+
+        results.append(
+            InlineQueryResultArticle(
+                id=str(idx),
+                title=f"{track['artist']} — {track['title']}",
+                description=track["duration"],
+                thumb_url=thumb_url,  # <── В ИНЛАЙНЕ ОТОБРАЖАЕТСЯ ОБЛОЖКА
+                input_message_content=InputTextMessageContent(
+                    message_text=f"🎧 Загружаю: {track['artist']} — {track['title']}"
+                ),
+                reply_markup=InlineKeyboardMarkup(
+                    inline_keyboard=[[
+                        InlineKeyboardButton(
+                            text="Получить трек",
+                            callback_data=f"get:{query.id}:{idx}"
+                        )
+                    ]]
+                )
+            )
+        )
+
+    await query.answer(results, cache_time=0)
+
+
+@router.callback_query(F.data.startswith("get:"))
+async def send_track(callback: CallbackQuery):
+    idx = int(callback.data.split(":")[1])
+
+
+    track = user_tracks[idx]
+
+    # получаем mp3 ссылку
     mp3_url = await _extract_mp3_url(track)
     if not mp3_url:
-        await query.answer([], cache_time=0)
+        await callback.message.edit_text("❌ mp3 не найден.")
         return
 
-    # Качаем MP3
+    # скачиваем mp3
     async with aiohttp.ClientSession() as session:
         async with session.get(mp3_url) as resp:
             audio_bytes = await resp.read()
 
-    # Качаем обложку (если есть)
-    cover_file = None
-    if track.get("cover"):
-        async with aiohttp.ClientSession() as session:
-            async with session.get(track["cover"]) as resp:
-                if cover_file:
-                    print("Нашли обложку:", cover_file)
-                else:
-                    print("Обложки нет")
-                cover_bytes = await resp.read()
+    bio = io.BytesIO(audio_bytes)
+    bio.name = "track.mp3"  # Telegram использует имя файла из поля name
 
-        cover_file = BufferedInputFile(cover_bytes, filename="cover.jpg")
+    audio_file = FSInputFile(bio)
 
+    cover = FSInputFile("cover.jpg")   # ← ТВОЯ ОБЛОЖКА
 
-    audio_file = BufferedInputFile(audio_bytes, filename="track.mp3")
-
-    # INLINE RESULT — с обложкой НЕ РАБОТАЕТ, Telegram не поддерживает.
-    # Поэтому делаем хитрость — отправляем аудио СРАЗУ пользователю:
-
-    await bot.send_audio(
-        chat_id=query.from_user.id,
+    # отправляем аудио
+    await callback.message.answer_audio(
         audio=audio_file,
         performer=track["artist"],
-        title=track["title"]
+        title=track["title"],
+        thumbnail=cover      # <── ВСТАВЛЯЕМ ТОЛЬКО ТВОЮ ОБЛОЖКУ
     )
 
-    # А в inline просто показываем кнопочку "Отправлено!"
-    await query.answer([
-        InlineQueryResultArticle(
-            id="done",
-            title="Трек загружен",
-            input_message_content=InputTextMessageContent("✔ Трек отправлен вам в личку")
-        )
-    ], cache_time=0)
