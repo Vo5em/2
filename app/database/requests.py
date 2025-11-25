@@ -76,7 +76,6 @@ async def search_soundcloud(query: str):
                     print(f"⚠ SC error {r.status}")
                     return []
                 data = await r.json()
-
     except Exception as e:
         print(f"💥 SC ошибка: {e}")
         return []
@@ -86,35 +85,37 @@ async def search_soundcloud(query: str):
     for item in data.get("collection", []):
         media = item.get("media", {})
         transcodings = media.get("transcodings", [])
-
         if not transcodings:
             continue
 
-        # выбираем ТОЛЬКО полный поток
+        # получаем mp3 url
         mp3_transcoding_url = None
 
-        # 1 — лучший вариант: mp3_1
         for t in transcodings:
             if t.get("preset") == "mp3_1":
                 mp3_transcoding_url = t["url"]
                 break
 
-        # 2 — fallback: progressive, но не "preview"
         if not mp3_transcoding_url:
             for t in transcodings:
-                fmt = t.get("format", {}).get("protocol")
-                if fmt == "progressive":
+                if t.get("format", {}).get("protocol") == "progressive":
                     mp3_transcoding_url = t["url"]
                     break
 
         if not mp3_transcoding_url:
             continue
 
+        # === ДОСТАЁМ ОБЛОЖКУ ===
+        cover = item.get("artwork_url")
+        if cover:
+            cover = cover.replace("large", "original")  # максимальное качество
+
         results.append({
             "title": item.get("title", "Без названия"),
             "artist": item.get("user", {}).get("username", "Неизвестен"),
             "duration": f"{item.get('duration',0)//60000}:{(item.get('duration',0)//1000)%60:02d}",
             "url": mp3_transcoding_url,
+            "thumbnail": cover,          # ← ОБЛОЖКА
             "source": "SoundCloud"
         })
 
@@ -122,18 +123,6 @@ async def search_soundcloud(query: str):
     return results
 
 async def search_skysound(artist_query: str):
-    """
-    Самая надёжная версия поиска SkySound:
-      ✓ корректный punycode
-      ✓ отсутствие дублей
-      ✓ стабильный парсинг длительности
-      ✓ чистка мусорных названий
-      ✓ глубокий поиск ссылок
-    """
-
-    # -------------------------------
-    # 1) ЧИСТИМ НАЗВАНИЕ АРТИСТА
-    # -------------------------------
     artist_raw = artist_query.strip().lower()
     artist_raw = re.sub(r"[^a-zа-я0-9]+", "-", artist_raw)
     artist_raw = re.sub(r"-{2,}", "-", artist_raw).strip("-")
@@ -147,7 +136,7 @@ async def search_skysound(artist_query: str):
     print(f"\n🌐 [SkySearch] URL артиста: {url}")
 
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+        "User-Agent": "Mozilla/5.0",
         "Referer": "https://skysound7.com/"
     }
 
@@ -157,21 +146,13 @@ async def search_skysound(artist_query: str):
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers, timeout=12) as resp:
-                print("📡 Код:", resp.status)
                 if resp.status != 200:
                     return []
-
                 html = await resp.text()
-
-    except Exception as e:
-        print("❌ Ошибка соединения:", e)
+    except:
         return []
 
     soup = BeautifulSoup(html, "html.parser")
-
-    # -------------------------------
-    # 2) ИЩЕМ ТРЕКИ
-    # -------------------------------
     playlist_items = soup.select("div.playlist-item")
 
     if not playlist_items:
@@ -180,14 +161,11 @@ async def search_skysound(artist_query: str):
 
     for item in playlist_items:
 
-        # ссылка на трек
         link = item.find("a", href=True)
         if not link:
             continue
 
         href = link["href"].strip()
-
-        # полный URL
         if not href.startswith("http"):
             href = f"https://{artist_domain}.skysound7.com{href}"
 
@@ -195,38 +173,44 @@ async def search_skysound(artist_query: str):
             continue
         seen.add(href)
 
-        # -------------------------
-        # НАЗВАНИЕ И АРТИСТ
-        # -------------------------
+        # название
         title_raw = (link.get("title") or link.text or "").strip()
         title_raw = re.sub(r"\b(скачать|download|слушать)\b", "", title_raw, flags=re.I)
-        title_raw = title_raw.strip(" -\u2013\u2014")
+        title_raw = title_raw.strip(" -–—")
 
-        artist = ""
-        title = title_raw
-
+        artist, title = "", title_raw
         if " - " in title_raw:
             artist, title = title_raw.split(" - ", 1)
 
-        if not title:
-            title = "Без названия"
-        if not artist:
-            artist = "Неизвестен"
+        if not artist: artist = "Неизвестен"
+        if not title: title = "Без названия"
 
-        # -------------------------
-        # ДЛИТЕЛЬНОСТЬ
-        # -------------------------
+        # длительность
         duration = "?:??"
+        dur = item.select_one("span.playlist-duration")
+        if dur:
+            duration = dur.text.strip()
 
-        dur_block = item.select_one("div.playlist-right span.playlist-duration")
-        if dur_block:
-            duration = dur_block.text.strip()
+        # === ДОСТАЁМ ОБЛОЖКУ ===
+        cover = None
+
+        # 1) логичная обложка рядом с треком
+        img = item.find("img")
+        if img and img.get("src"):
+            cover = img["src"]
+
+        # 2) fallback — ищем в HTML JS поле image: "..."
+        if not cover:
+            m = re.search(r'image:\s*"([^"]+)"', html)
+            if m:
+                cover = m.group(1)
 
         tracks.append({
             "title": title,
             "artist": artist,
             "url": href,
             "duration": duration,
+            "thumbnail": cover,   # ← ОБЛОЖКА
             "source": "SkySound"
         })
 

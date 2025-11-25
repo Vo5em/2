@@ -9,6 +9,7 @@ from aiogram.types import (
     InputTextMessageContent,
     ChosenInlineResult,
     InlineQueryResultAudio,
+    InlineQueryResultCachedDocument,
     FSInputFile
 )
 from config import bot
@@ -87,14 +88,11 @@ async def inline_search_fast(query: InlineQuery):
         await query.answer([], cache_time=0)
         return
 
-    # Быстрый поиск метаданных (не качаем mp3 здесь)
     tracks = []
     try:
         tracks += await search_skysound(q)
         tracks += await search_soundcloud(q)
-    except Exception as e:
-        # если поиск упал — вернём пустой список, но не позволим падать
-        print("Search error:", e)
+    except:
         await query.answer([], cache_time=0)
         return
 
@@ -102,43 +100,43 @@ async def inline_search_fast(query: InlineQuery):
         await query.answer([], cache_time=0)
         return
 
-    tracks = rank_tracks_by_similarity(q, tracks)
+    tracks = rank_tracks_by_similarity(q, tracks)[:5]
 
-    # Ограничиваем количество проверяемых треков, чтобы не тянуть поиски слишком долго
-    candidates = tracks[:10]
+    results = []
 
-    # Получаем mp3_url параллельно, но с ограничением concurrency
-    sem = asyncio.Semaphore(6)
+    for idx, track in enumerate(tracks):
 
-    async def _fast_get(track):
-        async with sem:
-            return track, await _extract_mp3_url(track)
-
-    tasks = [asyncio.create_task(_fast_get(t)) for t in candidates]
-    results = await asyncio.gather(*tasks)
-
-    iq_results = []
-    for idx, (track, mp3_url) in enumerate(results):
+        mp3_url = await _extract_mp3_url(track)
         if not mp3_url:
             continue
-        title = f"{track.get('artist','?')} — {track.get('title','?')}"
-        ttumb = FSInputFile("ttumb.jpg")
-        # InlineQueryResultAudio — Telegram сам вставит аудио в чат (личка, saved, группы)
-        iq_results.append(InlineQueryResultAudio(
-            id=str(idx),
-            audio_url=mp3_url,
-            title=track.get("title",""),
-            performer=track.get("artist",""),
-            thumb=ttumb
-        ))
-        # если нужно совсем быстро — можно break после 1 результата
-        # break
 
-    if not iq_results:
-        # если не нашли ни одного mp3 — вернём быстрые текстовые карточки (пользователь увидит "Подождите" не нужно)
-        # но пользователь просил сразу аудио — здесь пусто
-        await query.answer([], cache_time=0)
-        return
+        # === скачиваем mp3 ===
+        async with aiohttp.ClientSession() as sess:
+            async with sess.get(mp3_url) as resp:
+                if resp.status != 200:
+                    continue
+                mp3_bytes = await resp.read()
 
-    # Отвечаем результатами — Telegram вставит аудио
-    await query.answer(iq_results, cache_time=0, is_personal=True)
+        # === загружаем mp3 в Telegram ===
+        audio_msg = await bot.send_document(
+            chat_id=query.from_user.id,
+            document=("track.mp3", mp3_bytes),
+            caption=".",
+            disable_notification=True
+        )
+
+        file_id = audio_msg.document.file_id
+
+        # === формируем inline результат ===
+        results.append(
+            InlineQueryResultCachedDocument(
+                id=str(idx),
+                title=f"{track['artist']} — {track['title']}",
+                document_file_id=file_id,
+                description=track["title"],
+                caption=f"{track['artist']} — {track['title']}",
+                thumb_file_id=track["cover" ]
+            )
+        )
+
+    await query.answer(results, cache_time=0, is_personal=True)
