@@ -135,22 +135,18 @@ async def inline_search(query: InlineQuery):
 @router.callback_query(F.data.startswith("get:"))
 async def send_track(callback: CallbackQuery):
 
-    _, qid, idx = callback.data.split(":")
+    _, session_id, idx = callback.data.split(":")
     idx = int(idx)
 
-    # достаём трек
-    track = user_tracks.get(qid, [])[idx]
-    if not track:
-        await callback.message.answer("⚠ Трек не найден в памяти.")
-        return
+    track = user_tracks[session_id][idx]
 
-    # получаем mp3
+    # получаем mp3 ссылку
     mp3_url = await _extract_mp3_url(track)
     if not mp3_url:
-        await callback.message.answer("❌ mp3 не найден.")
+        await callback.message.edit_text("❌ mp3 не найден.")
         return
 
-    # скачиваем
+    # скачиваем mp3
     async with aiohttp.ClientSession() as session:
         async with session.get(mp3_url) as resp:
             audio_bytes = await resp.read()
@@ -159,7 +155,7 @@ async def send_track(callback: CallbackQuery):
     bio.name = "track.mp3"
 
     audio_file = FSInputFile(bio)
-    thumb = FSInputFile("ttumb.jpg")   # твоя обложка
+    thumb = FSInputFile("ttumb.jpg")
 
     await callback.message.answer_audio(
         audio=audio_file,
