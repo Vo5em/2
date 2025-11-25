@@ -122,14 +122,14 @@ async def inline_search_fast(query: InlineQuery):
         if not mp3_url:
             continue
         title = f"{track.get('artist','?')} — {track.get('title','?')}"
+        ttumb = FSInputFile("ttumb.jpg")
         # InlineQueryResultAudio — Telegram сам вставит аудио в чат (личка, saved, группы)
         iq_results.append(InlineQueryResultAudio(
             id=str(idx),
             audio_url=mp3_url,
             title=track.get("title",""),
             performer=track.get("artist",""),
-            caption=f"<a href='https://t.me/eschalon'>eschalon</a>",
-            parse_mode="HTML",
+            thumb=ttumb
         ))
         # если нужно совсем быстро — можно break после 1 результата
         # break
