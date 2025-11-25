@@ -109,7 +109,7 @@ async def inline_search(query: InlineQuery):
                 id=str(idx),
                 title=f"{track['artist']} — {track['title']}",
                 description=track["duration"],
-                thumb_url=thumb_url,  # <── В ИНЛАЙНЕ ОТОБРАЖАЕТСЯ ОБЛОЖКА
+                thumb=thumb_url,  # <── В ИНЛАЙНЕ ОТОБРАЖАЕТСЯ ОБЛОЖКА
                 input_message_content=InputTextMessageContent(
                     message_text=f"🎧 Загружаю: {track['artist']} — {track['title']}"
                 ),
