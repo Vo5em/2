@@ -134,34 +134,37 @@ async def inline_search(query: InlineQuery):
 
 @router.callback_query(F.data.startswith("get:"))
 async def send_track(callback: CallbackQuery):
+
     _, qid, idx = callback.data.split(":")
     idx = int(idx)
 
-    track = user_tracks[qid][idx]
-
-    # получаем mp3 ссылку
-    mp3_url = await _extract_mp3_url(track)
-    if not mp3_url:
-        await callback.message.edit_text("❌ mp3 не найден.")
+    # достаём трек
+    track = user_tracks.get(qid, [])[idx]
+    if not track:
+        await callback.message.answer("⚠ Трек не найден в памяти.")
         return
 
-    # скачиваем mp3
+    # получаем mp3
+    mp3_url = await _extract_mp3_url(track)
+    if not mp3_url:
+        await callback.message.answer("❌ mp3 не найден.")
+        return
+
+    # скачиваем
     async with aiohttp.ClientSession() as session:
         async with session.get(mp3_url) as resp:
             audio_bytes = await resp.read()
 
     bio = io.BytesIO(audio_bytes)
-    bio.name = "track.mp3"  # Telegram использует имя файла из поля name
+    bio.name = "track.mp3"
 
     audio_file = FSInputFile(bio)
+    thumb = FSInputFile("ttumb.jpg")   # твоя обложка
 
-    ttumb = FSInputFile("ttumb.jpg")   # ← ТВОЯ ОБЛОЖКА
-
-    # отправляем аудио
     await callback.message.answer_audio(
         audio=audio_file,
         performer=track["artist"],
         title=track["title"],
-        thumbnail=ttumb      # <── ВСТАВЛЯЕМ ТОЛЬКО ТВОЮ ОБЛОЖКУ
+        thumbnail=thumb
     )
 
