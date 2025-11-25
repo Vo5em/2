@@ -134,6 +134,7 @@ async def inline_search(query: InlineQuery):
 
 @router.callback_query(F.data.startswith("get:"))
 async def send_track(callback: CallbackQuery):
+    print("ret")
 
     _, session_id, idx = callback.data.split(":")
     idx = int(idx)
