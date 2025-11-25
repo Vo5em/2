@@ -126,39 +126,16 @@ async def inline_search(query: InlineQuery):
 
 @router.callback_query(F.data.startswith("get:"))
 async def send_track(callback: CallbackQuery):
+    print("🔥 CALL RECEIVED:", callback.data)
 
-    print("🔥 CALLBACK ПОЛУЧЕН:", callback.data)
+    await callback.answer()  # ОБЯЗАТЕЛЬНО
 
-    _, qid, idx = callback.data.split(":")
-    idx = int(idx)
+    _, query_id, index = callback.data.split(":")
+    index = int(index)
 
-    if qid not in user_tracks:
-        await callback.message.answer("⚠ Результаты устарели. Попробуй поискать снова.")
+    track = user_tracks.get(query_id, [])[index]
+
+    if not track:
+        await callback.message.edit_text("❌ Трек не найден в памяти бота.")
         return
-
-    track = user_tracks[qid][idx]
-
-    # получаем mp3 ссылку
-    mp3_url = await _extract_mp3_url(track)
-    if not mp3_url:
-        await callback.message.edit_text("❌ mp3 не найден.")
-        return
-
-    # качаем mp3
-    async with aiohttp.ClientSession() as session:
-        async with session.get(mp3_url) as resp:
-            audio_bytes = await resp.read()
-
-    bio = io.BytesIO(audio_bytes)
-    bio.name = "track.mp3"
-
-    audio_file = FSInputFile(bio)
-    thumb = FSInputFile("ttumb.jpg")
-
-    await callback.message.answer_audio(
-        audio=audio_file,
-        performer=track["artist"],
-        title=track["title"],
-        thumbnail=thumb
-    )
 
