@@ -134,14 +134,19 @@ async def inline_search(query: InlineQuery):
 
 @router.callback_query(F.data.startswith("get:"))
 async def send_track(callback: CallbackQuery):
-    print("ret")
+    print("faSD")
 
-    _, session_id, idx = callback.data.split(":")
-    idx = int(idx)
+    try:
+        _, qid, idx = callback.data.split(":")
+        idx = int(idx)
 
-    track = user_tracks[session_id][idx]
+        track = user_tracks[qid][idx]
+    except Exception as e:
+        await callback.answer("Ошибка. Данные трека не найдены.", show_alert=True)
+        print("Callback parse error:", e)
+        return
 
-    # получаем mp3 ссылку
+    # получаем прямой mp3 URL
     mp3_url = await _extract_mp3_url(track)
     if not mp3_url:
         await callback.message.edit_text("❌ mp3 не найден.")
@@ -153,7 +158,7 @@ async def send_track(callback: CallbackQuery):
             audio_bytes = await resp.read()
 
     bio = io.BytesIO(audio_bytes)
-    bio.name = "track.mp3"
+    bio.name = f"{track['artist']} - {track['title']}.mp3"
 
     audio_file = FSInputFile(bio)
     thumb = FSInputFile("ttumb.jpg")
@@ -164,4 +169,6 @@ async def send_track(callback: CallbackQuery):
         title=track["title"],
         thumbnail=thumb
     )
+
+    await callback.answer()
 
