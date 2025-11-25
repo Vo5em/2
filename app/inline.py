@@ -112,9 +112,14 @@ async def inline_search_fast(query: InlineQuery):
     if track.get("cover"):
         async with aiohttp.ClientSession() as session:
             async with session.get(track["cover"]) as resp:
+                if cover_file:
+                    print("Нашли обложку:", cover_file)
+                else:
+                    print("Обложки нет")
                 cover_bytes = await resp.read()
 
         cover_file = BufferedInputFile(cover_bytes, filename="cover.jpg")
+
 
     audio_file = BufferedInputFile(audio_bytes, filename="track.mp3")
 
