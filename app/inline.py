@@ -102,14 +102,19 @@ async def inline_search(query: InlineQuery):
     results = []
 
     for idx, track in enumerate(tracks[:30]):
-        thumb_url = track.get("thumb") or track.get("artwork") or None
+        thumb_url = track.get("thumb")
 
         results.append(
             InlineQueryResultArticle(
-                id=str(idx),
+                id=f"{idx}",
                 title=f"{track['artist']} — {track['title']}",
                 description=track["duration"],
-                thumb=thumb_url,  # <── В ИНЛАЙНЕ ОТОБРАЖАЕТСЯ ОБЛОЖКА
+
+                # ✔ ПРАВИЛЬНОЕ ПОЛЕ
+                thumbnail_url=thumb_url,
+                thumbnail_width=100,
+                thumbnail_height=100,
+
                 input_message_content=InputTextMessageContent(
                     message_text=f"🎧 Загружаю: {track['artist']} — {track['title']}"
                 ),
@@ -129,10 +134,10 @@ async def inline_search(query: InlineQuery):
 
 @router.callback_query(F.data.startswith("get:"))
 async def send_track(callback: CallbackQuery):
-    idx = int(callback.data.split(":")[1])
+    _, qid, idx = callback.data.split(":")
+    idx = int(idx)
 
-
-    track = user_tracks[idx]
+    track = user_tracks[qid][idx]
 
     # получаем mp3 ссылку
     mp3_url = await _extract_mp3_url(track)
@@ -150,13 +155,13 @@ async def send_track(callback: CallbackQuery):
 
     audio_file = FSInputFile(bio)
 
-    cover = FSInputFile("cover.jpg")   # ← ТВОЯ ОБЛОЖКА
+    ttumb = FSInputFile("ttumb.jpg")   # ← ТВОЯ ОБЛОЖКА
 
     # отправляем аудио
     await callback.message.answer_audio(
         audio=audio_file,
         performer=track["artist"],
         title=track["title"],
-        thumbnail=cover      # <── ВСТАВЛЯЕМ ТОЛЬКО ТВОЮ ОБЛОЖКУ
+        thumbnail=ttumb      # <── ВСТАВЛЯЕМ ТОЛЬКО ТВОЮ ОБЛОЖКУ
     )
 
