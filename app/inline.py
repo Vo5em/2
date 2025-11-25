@@ -88,33 +88,25 @@ async def _extract_mp3_url(track: dict) -> str | None:
 async def inline_search(query: InlineQuery):
     q = query.query.strip()
     if not q:
-        await query.answer([], cache_time=0)
-        return
+        return await query.answer([], cache_time=0)
 
-    # Поиск
     tracks = []
     tracks += await search_soundcloud(q)
     tracks += await search_skysound(q)
 
-    # сохраняем результаты для callback
-    user_tracks[query.id] = tracks
-
     results = []
 
     for idx, track in enumerate(tracks[:30]):
-        thumb_url = track.get("thumb")
+
+        # сохраняем результат
+        user_tracks[(query.from_user.id, idx)] = track
 
         results.append(
             InlineQueryResultArticle(
-                id=f"{idx}",
+                id=str(idx),
                 title=f"{track['artist']} — {track['title']}",
                 description=track["duration"],
-
-                # ✔ ПРАВИЛЬНОЕ ПОЛЕ
-                thumbnail_url=thumb_url,
-                thumbnail_width=100,
-                thumbnail_height=100,
-
+                thumbnail_url=track.get("thumb"),   # <-- правильно!
                 input_message_content=InputTextMessageContent(
                     message_text=f"🎧 Загружаю: {track['artist']} — {track['title']}"
                 ),
@@ -122,7 +114,7 @@ async def inline_search(query: InlineQuery):
                     inline_keyboard=[[
                         InlineKeyboardButton(
                             text="Получить трек",
-                            callback_data=f"get:{query.id}:{idx}"
+                            callback_data=f"get:{idx}"   # КОРОТКИЙ callback
                         )
                     ]]
                 )
