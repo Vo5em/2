@@ -130,8 +130,7 @@ async def inline_search_fast(query: InlineQuery):
         chat_id=query.from_user.id,
         audio=audio_file,
         performer=track["artist"],
-        title=track["title"],
-        thumb=cover_file
+        title=track["title"]
     )
 
     # А в inline просто показываем кнопочку "Отправлено!"
