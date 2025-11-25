@@ -1,3 +1,4 @@
+import io
 import re
 import asyncio
 import aiohttp
@@ -11,6 +12,7 @@ from aiogram.types import (
     CallbackQuery,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
+    FSInputFile
 )
 from app.database.requests import (
     search_skysound,
@@ -20,7 +22,7 @@ from app.database.requests import (
 
 
 router = Router()
-audio_cache = {}
+user_tracks = {}
 
 # -------- INLINE SEARCH ------------
 # Параметры таймаутов — уменьши, если хочешь ещё быстрее, но риск пропустить треки вырастет
@@ -95,11 +97,11 @@ async def inline_search(query: InlineQuery):
         track_id = track["url"]
 
         # Если файл уже загружен в Telegram – выдаём сразу
-        if track_id in audio_cache:
+        if track_id in user_tracks:
             results.append(
                 InlineQueryResultCachedAudio(
                     id=str(idx),
-                    audio_file_id=audio_cache[track_id],
+                    audio_file_id=user_tracks[track_id],
                     caption=f"{track['artist']} — {track['title']}"
                 )
             )
@@ -119,4 +121,49 @@ async def inline_search(query: InlineQuery):
         )
 
     await query.answer(results, cache_time=0)
+
+
+@router.message(F.text.startswith("__load_track__:"))
+async def send_audio_after_inline(message: Message):
+    try:
+        idx = int(message.text.split(":")[1])
+    except:
+        return await message.answer("Ошибка выбора трека.")
+
+    track = user_tracks[idx]
+    track_id = track["url"]
+
+    # 1) если уже загружено → отдать из кэша
+    if track_id in user_tracks:
+        return await message.answer_audio(
+            audio=user_tracks[track_id],
+            performer=track["artist"],
+            title=track["title"]
+        )
+
+    # 2) иначе качаем и грузим аудио
+    mp3_url = await _extract_mp3_url(track)
+    if not mp3_url:
+        return await message.answer("❌ mp3 не найден.")
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get(mp3_url) as r:
+            audio_bytes = await r.read()
+
+    bio = io.BytesIO(audio_bytes)
+    bio.name = "track.mp3"
+
+    audio_file = FSInputFile(bio)
+    cover = FSInputFile("ttumb.jpg")  # ← твоя обложка
+
+    # Отправляем аудио
+    msg = await message.answer_audio(
+        audio=audio_file,
+        performer=track["artist"],
+        title=track["title"],
+        thumbnail=cover
+    )
+
+    # 3) сохраняем file_id в кэш — чтобы в следующий раз выдавать мгновенно
+    user_tracks[track_id] = msg.audio.file_id
 
