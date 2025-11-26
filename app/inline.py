@@ -2,7 +2,6 @@ import re
 import io
 import os
 import json
-from aiogram.utils.json import json_dumps
 import aiohttp
 import asyncio
 import traceback
@@ -97,7 +96,7 @@ async def chosen(res: ChosenInlineResult):
     # Полный дамп объекта
     try:
         print("=== RAW ChosenInlineResult ===")
-        print(json_dumps(res.model_dump(), indent=2, ensure_ascii=False))
+        print(json.dumps(res.model_dump(), indent=2, ensure_ascii=False))
         print("=== END RAW ===")
     except Exception as e:
         print("Failed to dump chosen:", e, repr(res))
@@ -112,7 +111,7 @@ async def chosen(res: ChosenInlineResult):
     inline_id = res.inline_message_id
 
     if not inline_id:
-        print("❌ inline_message_id отсутствует!")
+        print("❌ inline_message_id отсутствует")
         print("  user:", res.from_user.id)
         print("  result_id:", res.result_id)
         print("  query:", res.query)
