@@ -8,7 +8,7 @@ import traceback
 from aiogram import Router, F
 from aiogram.types import (
     InlineQuery, InlineQueryResultArticle,ChosenInlineResult,
-    InputTextMessageContent,InlineKeyboardMarkup,InlineKeyboardButton,BufferedInputFile, CallbackQuery
+    InputTextMessageContent,InlineKeyboardMarkup,InputMediaAudio,BufferedInputFile, CallbackQuery
 )
 from aiogram.types.input_file import FSInputFile
 from config import bot
@@ -19,6 +19,7 @@ from app.database.requests import rank_tracks_by_similarity
 
 router = Router()
 user_tracks ={}
+TRACKS_TEMP: dict[str, dict] = {}
 
 async def fetch_mp3(track):
     url = track["url"]
@@ -46,18 +47,18 @@ async def fetch_mp3(track):
 
 
 @router.inline_query()
-async def inline_search(inline_query: InlineQuery):
-    query = inline_query.query.strip()
+async def inline_search(q: InlineQuery):
+    query = q.query.strip()
 
     if not query:
-        return await inline_query.answer([])
+        return await q.answer([])
 
     tracks = []
     tracks += await search_skysound(query)
     tracks += await search_soundcloud(query)
 
     if not tracks:
-        return await inline_query.answer([
+        return await q.answer([
             InlineQueryResultArticle(
                 id="notfound",
                 title="Ничего не найдено",
@@ -67,76 +68,69 @@ async def inline_search(inline_query: InlineQuery):
             )
         ])
 
-    # сортировка
     tracks = rank_tracks_by_similarity(query, tracks)
 
     results = []
 
-    for i, t in enumerate(tracks[:15]):  # ограничение Telegram
+    for i, t in enumerate(tracks[:20]):
         title = f"{t['artist']} — {t['title']}"
+        tid = f"{q.from_user.id}_{i}"  # УНИКАЛЬНЫЙ ID inline результата
+
+        # сохраняем инфу для chosen_inline_result
+        TRACKS_TEMP[tid] = t
 
         results.append(
             InlineQueryResultArticle(
-                id=str(i),
+                id=tid,
                 title=title,
-                description=f"Источник: {t['source']}",
+                description=t["source"],
                 input_message_content=InputTextMessageContent(message_text=
-                    f"🎵 {title}\nНажми ниже, чтобы получить аудио."
-                ),
-                reply_markup=InlineKeyboardMarkup(
-                    inline_keyboard=[
-                        [
-                            InlineKeyboardButton(
-                                text="▶ Скачать трек",
-                                switch_inline_query_current_chat=f"play_{i}"
-                            )
-                        ]
-                    ]
+                    f"Загружаю трек… {title}"
                 )
             )
         )
 
-    # сохраняем список в память
-    user_tracks[inline_query.from_user.id] = tracks
-
-    await inline_query.answer(results, cache_time=1)
+    await q.answer(results, cache_time=1)
 
 @router.chosen_inline_result()
 async def chosen(res: ChosenInlineResult):
-    user_id = res.from_user.id
-    idx = int(res.result_id)
+    tid = res.result_id
+    if tid not in TRACKS_TEMP:
+        print("NO TRACK FOUND")
+        return
 
-    track = user_tracks.get(user_id, [])[idx]
+    track = TRACKS_TEMP[tid]
 
-    # 1) скачиваем mp3
-    mp3_bytes = await fetch_mp3(track)
+    inline_id = res.inline_message_id
+    if not inline_id:
+        return
 
-    # 2) скачиваем обложку
-    async with aiohttp.ClientSession() as s:
-        async with s.get(track["thumb"]) as r:
-            thumb_bytes = await r.read()
+    # грузим mp3
+    try:
+        mp3_bytes = await fetch_mp3(track)
+    except Exception as e:
+        print("MP3 error:", e)
+        return
 
-    # 3) отправляем аудио пользователю напрямую
-    await res.bot.send_audio(
-        chat_id=user_id,
-        audio=BufferedInputFile(mp3_bytes, f"{track['title']}.mp3"),
-        title=track["title"],
-        performer=track["artist"],
-        thumbnail=BufferedInputFile(thumb_bytes, "thumb.jpg"),
-        caption="твой трек 🎵"
+    # грузим обложку
+    thumb_bytes = None
+    try:
+        async with aiohttp.ClientSession() as sess:
+            async with sess.get(track["thumb"]) as r:
+                thumb_bytes = await r.read()
+    except:
+        pass
+
+    await res.bot.edit_message_media(
+        inline_message_id=inline_id,
+        media=InputMediaAudio(
+            media=BufferedInputFile(mp3_bytes, "track.mp3"),
+            title=track["title"],
+            performer=track["artist"],
+            thumbnail=(
+                BufferedInputFile(thumb_bytes, "cover.jpg")
+                if thumb_bytes else None
+            )
+        )
     )
-
-    # 4) удаляем inline-сообщение => создаётся эффект “замены”
-    if res.inline_message_id:
-        try:
-            await res.bot.edit_message_text(
-                inline_message_id=res.inline_message_id,
-                text="Отправляю аудио…"
-            )
-            await res.bot.delete_message(
-                chat_id=user_id,
-                message_id=res.inline_message_id
-            )
-        except:
-            pass
 
