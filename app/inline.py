@@ -14,115 +14,79 @@ from app.database.requests import search_soundcloud, search_skysound, get_soundc
 
 router = Router()
 
-# хранилище найденных треков
-TRACK_CACHE = {}
-
-# таймауты
-HTML_FETCH_TIMEOUT = 4
-MP3_HEAD_TIMEOUT = 6
-
-_mp3_cache = {}     # кеш прямых mp3 ссылок
+# временный кэш
+AUDIO_CACHE = {}  # url -> file_id
+TRACKS_TEMP = {}  # result_id -> track_dict
 
 
-# ========= ФУНКЦИЯ ПОЛУЧЕНИЯ ПРЯМОГО MP3 ========
-async def extract_mp3_url(track: dict):
-    url = track["url"]
-
-    if url in _mp3_cache:
-        return _mp3_cache[url]
-
-    try:
-        if track["source"] == "SoundCloud":
-            mp3 = await asyncio.wait_for(
-                get_soundcloud_mp3_url(url),
-                timeout=MP3_HEAD_TIMEOUT
-            )
-            if mp3:
-                _mp3_cache[url] = mp3
-            return mp3
-
-        timeout = aiohttp.ClientTimeout(total=HTML_FETCH_TIMEOUT)
-        async with aiohttp.ClientSession(timeout=timeout) as sess:
-            async with sess.get(url) as r:
-                if r.status != 200:
-                    return None
-                html = await r.text()
-
-        m = re.findall(r'https:\/\/[^\s"]+\.mp3', html)
-        if not m:
-            return None
-
-        mp3 = m[0]
-        _mp3_cache[url] = mp3
-        return mp3
-
-    except:
-        return None
-
-
-# ========== INLINE SEARCH ============
 @router.inline_query()
-async def inline_search(query: InlineQuery):
-    q = query.query.strip()
-    if not q:
-        return await query.answer([], cache_time=0)
+async def inline_search(q: InlineQuery):
+    text = q.query.strip()
+    if not text:
+        return await q.answer([], cache_time=0)
 
-    tracks = await search_soundcloud(q) + await search_skysound(q)
+    # выполняем поиск
+    tracks = []
+    tracks += await search_soundcloud(text)
+    tracks += await search_skysound(text)
 
     results = []
 
-    for idx, track in enumerate(tracks[:30]):
-        _mp3_cache[(query.from_user.id, idx)] = track
+    for i, t in enumerate(tracks[:30]):
+        uid = f"track_{i}"
 
+        TRACKS_TEMP[uid] = t  # сохраним весь трек
+
+        # обложка грузится через thumbnail_url
         results.append(
             InlineQueryResultArticle(
-                id=str(idx),
-                title=f"{track['artist']} — {track['title']}",
-                description=track["duration"],
-                thumbnail_url=track.get("thumb"),
+                id=uid,
+                title=f"{t['artist']} — {t['title']}",
+                description=t["duration"],
+                thumbnail_url=t.get("thumb"),
                 input_message_content=InputTextMessageContent(
-                    message_text=f"Загружаю трек..."
+                    message_text=f"▶ {t['artist']} — {t['title']}"
                 )
             )
         )
 
-    await query.answer(results, cache_time=0)
+    await q.answer(results, cache_time=0)
 
 
 
-# 2. ВЫБОР ИНЛАЙН РЕЗУЛЬТАТА — вот этот обработчик ты забыл!
 @router.chosen_inline_result()
-async def chosen_result(result: ChosenInlineResult):
-    user_id = result.from_user.id
-    idx = int(result.result_id)
-
-    track = _mp3_cache.get((user_id, idx))
+async def on_choose(res: ChosenInlineResult):
+    track = TRACKS_TEMP.get(res.result_id)
     if not track:
         return
 
-    # получаем mp3 ссылку
-    mp3_url = await extract_mp3_url(track)
-    if not mp3_url:
+    chat_id = res.from_user.id
+
+    url = track["url"]
+
+    # если файл был отправлен ранее — отправим из кэша
+    if url in AUDIO_CACHE:
+        await res.bot.send_audio(
+            chat_id,
+            audio=AUDIO_CACHE[url],
+            title=track["title"],
+            performer=track["artist"],
+            thumbnail=track.get("thumb")
+        )
         return
 
-    # скачиваем
-    async with aiohttp.ClientSession() as session:
-        async with session.get(mp3_url) as resp:
-            audio_bytes = await resp.read()
+    # иначе — качаем mp3
+    mp3 = await get_soundcloud_mp3_url(url)
 
-    bio = io.BytesIO(audio_bytes)
-    bio.name = "track.mp3"
-
-    audio_file = FSInputFile(bio, filename="track.mp3")
-
-    thumb = FSInputFile("ttumb.jpg")
-
-    # отправляем пользователю аудио
-    await bot.send_audio(
-        chat_id=user_id,
-        audio=FSInputFile(bio),
+    # отправляем
+    sent = await res.bot.send_audio(
+        chat_id,
+        audio=mp3,
         title=track["title"],
         performer=track["artist"],
-        thumbnail=thumb,
+        thumbnail=track.get("thumb")
     )
+
+    # кэшируем file_id
+    AUDIO_CACHE[url] = sent.audio.file_id
 
