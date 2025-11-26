@@ -94,6 +94,7 @@ async def inline_search(q: InlineQuery):
 
 @router.chosen_inline_result()
 async def chosen(res: ChosenInlineResult):
+    print("asdf")
     tid = res.result_id
     if tid not in TRACKS_TEMP:
         print("NO TRACK FOUND")
