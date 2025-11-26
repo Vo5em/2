@@ -83,6 +83,7 @@ async def inline_search(q: InlineQuery):
 
 @router.chosen_inline_result()
 async def on_choose(res: ChosenInlineResult):
+    print("asdf")
 
     tid = res.result_id
     track = TRACKS_TEMP.get(tid)
