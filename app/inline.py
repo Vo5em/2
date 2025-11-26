@@ -98,17 +98,23 @@ async def chosen(res: ChosenInlineResult):
         return
 
     track = TRACKS_TEMP[tid]
+    chat_id = res.from_user.id
 
-    user_id = res.from_user.id   # ← ВОТ ОН, КОМУ СЛАТЬ АУДИО
+    # СТАДИЯ 1 — отправляем временное сообщение
+    placeholder = await res.bot.send_message(
+        chat_id=chat_id,
+        text="🔄 Загружаю аудио…",
+    )
 
-    # Загружаем аудио
+    # СТАДИЯ 2 — качаем mp3
     try:
         mp3_bytes = await fetch_mp3(track)
     except Exception as e:
         print("mp3 error:", e)
+        await placeholder.edit_text("❌ Ошибка загрузки трека")
         return
 
-    # Загружаем обложку
+    # СТАДИЯ 3 — качаем обложку
     thumb_bytes = None
     try:
         async with aiohttp.ClientSession() as s:
@@ -117,13 +123,24 @@ async def chosen(res: ChosenInlineResult):
     except:
         pass
 
-    # ОТПРАВЛЯЕМ АУДИО ПОЛЬЗОВАТЕЛЮ В ЛС
-    await res.bot.send_audio(
-        chat_id=user_id,
-        audio=BufferedInputFile(mp3_bytes, "track.mp3"),
-        title=track["title"],
-        performer=track["artist"],
-        thumbnail=BufferedInputFile(thumb_bytes, "cover.jpg") if thumb_bytes else None,
-        caption="Ваш трек готов 🎵"
-    )
+    # СТАДИЯ 4 — заменяем сообщение на АУДИО
+    try:
+        await res.bot.edit_message_media(
+            chat_id=chat_id,
+            message_id=placeholder.message_id,
+            media=InputMediaAudio(
+                media=BufferedInputFile(mp3_bytes, "track.mp3"),
+                title=track["title"],
+                performer=track["artist"],
+                thumb=BufferedInputFile(thumb_bytes, "cover.jpg") if thumb_bytes else None,
+            )
+        )
+
+    except Exception as e:
+        print("edit_message_media error:", e)
+        await placeholder.edit_text("❌ Ошибка при отправке аудио")
+        return
+
+    # можно очистить временный трек
+    del TRACKS_TEMP[tid]
 
