@@ -5,7 +5,7 @@ import asyncio
 from aiogram import Router, F
 from aiogram.types import (
     InlineQuery, InlineQueryResultArticle,
-    InputTextMessageContent,BufferedInputFile, ChosenInlineResult
+    InputTextMessageContent,BufferedInputFile,InputMediaAudio, ChosenInlineResult
 )
 from aiogram.types.input_file import FSInputFile
 from config import bot
@@ -86,28 +86,31 @@ async def on_choose(res: ChosenInlineResult):
 
     tid = res.result_id
     track = TRACKS_TEMP.get(tid)
+    bot = res.bot
 
-    if not track:
+    # если Telegram НЕ прислал inline_message_id → НИЧЕГО не делаем
+    if not res.inline_message_id:
         return
 
-    chat_id = res.from_user.id
-
-    # -------- mp3 URL --------
+    # ---------- получаем mp3 ----------
     mp3_url = track.get("mp3")
     if not mp3_url:
         mp3_url = await get_mp3(track)
 
     if not mp3_url:
-        return await res.bot.send_message(chat_id, "Ошибка: не найден mp3 😢")
+        return await bot.edit_message_text(
+            inline_message_id=res.inline_message_id,
+            text="Ошибка: mp3 не найден 😢"
+        )
 
-    # -------- скачивание mp3 --------
+    # ---------- скачиваем mp3 ----------
     async with aiohttp.ClientSession() as sess:
         async with sess.get(mp3_url) as r:
             mp3_bytes = await r.read()
 
     audio = BufferedInputFile(mp3_bytes, filename="track.mp3")
 
-    # -------- скачивание обложки --------
+    # ---------- скачиваем обложку ----------
     thumb = None
     if track.get("thumb"):
         async with aiohttp.ClientSession() as sess:
@@ -115,12 +118,14 @@ async def on_choose(res: ChosenInlineResult):
                 thumb_bytes = await r.read()
                 thumb = BufferedInputFile(thumb_bytes, filename="cover.jpg")
 
-    # -------- отправка аудио --------
-    await res.bot.send_audio(
-        chat_id=chat_id,
-        audio=audio,
-        performer=track["artist"],
-        title=track["title"],
-        thumbnail=thumb
+    # ---------- заменяем заглушку на АУДИО ----------
+    await bot.edit_message_media(
+        inline_message_id=res.inline_message_id,
+        media=InputMediaAudio(
+            media=audio,
+            title=track["title"],
+            performer=track["artist"],
+            thumbnail=thumb
+        )
     )
 
