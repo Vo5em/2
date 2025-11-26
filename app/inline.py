@@ -7,7 +7,7 @@ import asyncio
 import traceback
 from aiogram import Router, F
 from aiogram.types import (
-    InlineQuery, InlineQueryResultArticle,ChosenInlineResult,
+    InlineQuery, InlineQueryResultArticle,ChosenInlineResult,InlineKeyboardButton,
     InputTextMessageContent,InlineKeyboardMarkup,InputMediaAudio,BufferedInputFile, CallbackQuery
 )
 from aiogram.types.input_file import FSInputFile
@@ -53,7 +53,7 @@ async def inline_search(q: InlineQuery):
     if not query:
         return await q.answer([])
 
-    # Ищем треки
+    # Получаем треки
     tracks = []
     tracks += await search_skysound(query)
     tracks += await search_soundcloud(query)
@@ -61,29 +61,33 @@ async def inline_search(q: InlineQuery):
     if not tracks:
         return await q.answer([
             InlineQueryResultArticle(
-                id="notfound",
+                id="nf",
                 title="Ничего не найдено",
-                input_message_content=InputTextMessageContent(
-                    f"По запросу «{query}» ничего не найдено"
-                )
+                input_message_content=InputTextMessageContent(message_text="Ничего не найдено")
             )
         ])
 
     tracks = rank_tracks_by_similarity(query, tracks)
-
     results = []
+
     for i, t in enumerate(tracks[:20]):
         tid = f"{q.from_user.id}_{i}"
         TRACKS_TEMP[tid] = t
 
+        # Показываем Article с обложкой
         results.append(
             InlineQueryResultArticle(
                 id=tid,
                 title=f"{t['artist']} — {t['title']}",
                 description=t["source"],
-                thumb_url=t["thumb"],
-                input_message_content=InputTextMessageContent(
-                    message_text="⏳ Загружаю трек…"
+                thumb_url=t["thumb"],  # обложка в inline preview
+                reply_markup=InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [InlineKeyboardButton(text="⏳ Загрузка…", callback_data="stub")]
+                    ]
+                ),
+                input_message_content=InputTextMessageContent(message_text=
+                    "⏳ Загружаю трек…"
                 )
             )
         )
@@ -93,30 +97,74 @@ async def inline_search(q: InlineQuery):
 
 @router.chosen_inline_result()
 async def chosen(res: ChosenInlineResult):
-    # Полный дамп объекта
-    try:
-        print("=== RAW ChosenInlineResult ===")
-        print(json.dumps(res.model_dump(), indent=2, ensure_ascii=False))
-        print("=== END RAW ===")
-    except Exception as e:
-        print("Failed to dump chosen:", e, repr(res))
+
+    print("\n===== RAW CHOSEN RESULT =====")
+    print(res.model_dump_json(indent=2))
+    print("======= END RAW =======\n")
 
     tid = res.result_id
 
     if tid not in TRACKS_TEMP:
-        print("⚠ TRACKS_TEMP: ключ не найден:", tid)
+        print("❌ TRACKS_TEMP: нет такого tid")
         return
 
     track = TRACKS_TEMP[tid]
     inline_id = res.inline_message_id
 
     if not inline_id:
-        print("❌ inline_message_id отсутствует")
-        print("  user:", res.from_user.id)
-        print("  result_id:", res.result_id)
-        print("  query:", res.query)
-        print("  ВАЖНО: Telegram не создаёт inline_message_id для Article/input_message_content")
+        print("❌ inline_message_id отсутствует — Telegram отправил сообщение от пользователя")
+        print("⭐ Это означает, что inline кнопка НЕ СРАБОТАЛА")
         return
 
-    print("✅ inline_message_id:", inline_id)
+    # Шаг 1 — показываем прогресс
+    await res.bot.edit_message_text(
+        inline_message_id=inline_id,
+        text="🔄 Загружаю аудио…"
+    )
+
+    # Шаг 2 — скачиваем mp3
+    try:
+        mp3_bytes = await fetch_mp3(track)
+    except Exception as e:
+        print("mp3 error:", e)
+        await res.bot.edit_message_text(
+            inline_message_id=inline_id,
+            text="❌ Ошибка загрузки аудио"
+        )
+        return
+
+    # Шаг 3 — качаем обложку
+    thumb_bytes = None
+    try:
+        async with aiohttp.ClientSession() as s:
+            async with s.get(track["thumb"]) as r:
+                thumb_bytes = await r.read()
+    except:
+        pass
+
+    # Шаг 4 — отправляем аудио (заменяем inline сообщение)
+    from aiogram.types import BufferedInputFile
+
+    try:
+        await res.bot.edit_message_media(
+            inline_message_id=inline_id,
+            media=InputMediaAudio(
+                media=BufferedInputFile(mp3_bytes, "track.mp3"),
+                title=track["title"],
+                performer=track["artist"],
+                thumb=BufferedInputFile(thumb_bytes, "cover.jpg") if thumb_bytes else None
+            )
+        )
+    except Exception as e:
+        print("edit_message_media error:", e)
+        await res.bot.edit_message_text(
+            inline_message_id=inline_id,
+            text="❌ Ошибка при отправке аудио"
+        )
+        return
+
+    # Чистим
+    del TRACKS_TEMP[tid]
+
+    print("✔ Аудио отправлено успешно!")
 
