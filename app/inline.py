@@ -71,67 +71,59 @@ async def inline_search(q: InlineQuery):
     tracks = rank_tracks_by_similarity(query, tracks)
 
     results = []
-
     for i, t in enumerate(tracks[:20]):
-        title = f"{t['artist']} — {t['title']}"
-        tid = f"{q.from_user.id}_{i}"  # УНИКАЛЬНЫЙ ID inline результата
-
-        # сохраняем инфу для chosen_inline_result
+        tid = f"{q.from_user.id}_{i}"
         TRACKS_TEMP[tid] = t
 
         results.append(
             InlineQueryResultArticle(
                 id=tid,
-                title=title,
+                title=f"{t['artist']} — {t['title']}",
                 description=t["source"],
                 input_message_content=InputTextMessageContent(message_text=
-                    f"Загружаю трек… {title}"
+                    f"Загружаю трек…"
                 )
             )
         )
 
     await q.answer(results, cache_time=1)
 
+
 @router.chosen_inline_result()
 async def chosen(res: ChosenInlineResult):
-    print("asdf")
+    print("chosen:", res.result_id)
+
     tid = res.result_id
     if tid not in TRACKS_TEMP:
-        print("NO TRACK FOUND")
         return
 
     track = TRACKS_TEMP[tid]
 
-    inline_id = res.inline_message_id
-    if not inline_id:
-        return
+    user_id = res.from_user.id   # ← ВОТ ОН, КОМУ СЛАТЬ АУДИО
 
-    # грузим mp3
+    # Загружаем аудио
     try:
         mp3_bytes = await fetch_mp3(track)
     except Exception as e:
-        print("MP3 error:", e)
+        print("mp3 error:", e)
         return
 
-    # грузим обложку
+    # Загружаем обложку
     thumb_bytes = None
     try:
-        async with aiohttp.ClientSession() as sess:
-            async with sess.get(track["thumb"]) as r:
+        async with aiohttp.ClientSession() as s:
+            async with s.get(track["thumb"]) as r:
                 thumb_bytes = await r.read()
     except:
         pass
 
-    await res.bot.edit_message_media(
-        inline_message_id=inline_id,
-        media=InputMediaAudio(
-            media=BufferedInputFile(mp3_bytes, "track.mp3"),
-            title=track["title"],
-            performer=track["artist"],
-            thumbnail=(
-                BufferedInputFile(thumb_bytes, "cover.jpg")
-                if thumb_bytes else None
-            )
-        )
+    # ОТПРАВЛЯЕМ АУДИО ПОЛЬЗОВАТЕЛЮ В ЛС
+    await res.bot.send_audio(
+        chat_id=user_id,
+        audio=BufferedInputFile(mp3_bytes, "track.mp3"),
+        title=track["title"],
+        performer=track["artist"],
+        thumbnail=BufferedInputFile(thumb_bytes, "cover.jpg") if thumb_bytes else None,
+        caption="Ваш трек готов 🎵"
     )
 
