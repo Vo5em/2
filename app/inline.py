@@ -78,41 +78,35 @@ async def inline_search(q: InlineQuery):
             )
         )
 
-    await q.answer(results, cache_time=0)
+    await q.answer(results, cache_time=2)
 
 
 @router.chosen_inline_result()
 async def on_choose(res: ChosenInlineResult):
-    print("asdf")
-    chat = res.chat_instance
-    print("CHAT_INSTANCE:", chat)
     tid = res.result_id
     track = TRACKS_TEMP.get(tid)
-    bot = res.bot
 
-    # если Telegram НЕ прислал inline_message_id → НИЧЕГО не делаем
-    if not res.inline_message_id:
+    if not track:
         return
 
-    # ---------- получаем mp3 ----------
-    mp3_url = track.get("mp3")
-    if not mp3_url:
-        mp3_url = await get_mp3(track)
+    inline_id = res.inline_message_id
+    if not inline_id:
+        # Такое возможно если запрос был в ПМ с ботом, но тогда chat_id есть
+        return
 
+    # -------- получаем mp3 --------
+    mp3_url = track.get("mp3") or await get_mp3(track)
     if not mp3_url:
-        return await bot.edit_message_text(
-            inline_message_id=res.inline_message_id,
-            text="Ошибка: mp3 не найден 😢"
-        )
+        return
 
-    # ---------- скачиваем mp3 ----------
+    # скачиваем mp3
     async with aiohttp.ClientSession() as sess:
         async with sess.get(mp3_url) as r:
-            mp3_bytes = await r.read()
+            audio_bytes = await r.read()
 
-    audio = BufferedInputFile(mp3_bytes, filename="track.mp3")
+    audio = BufferedInputFile(audio_bytes, filename="track.mp3")
 
-    # ---------- скачиваем обложку ----------
+    # скачиваем обложку
     thumb = None
     if track.get("thumb"):
         async with aiohttp.ClientSession() as sess:
@@ -120,9 +114,9 @@ async def on_choose(res: ChosenInlineResult):
                 thumb_bytes = await r.read()
                 thumb = BufferedInputFile(thumb_bytes, filename="cover.jpg")
 
-    # ---------- заменяем заглушку на АУДИО ----------
-    await bot.edit_message_media(
-        inline_message_id=res.inline_message_id,
+    # -------- ЗАМЕНЯЕМ заглушку на аудио --------
+    await res.bot.edit_message_media(
+        inline_message_id=inline_id,
         media=InputMediaAudio(
             media=audio,
             title=track["title"],
