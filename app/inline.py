@@ -26,7 +26,7 @@ async def inline_search(q: InlineQuery):
     result = InlineQueryResultArticle(
         id="test1",
         title="Нажми кнопку",
-        input_message_content=InputTextMessageContent("🎧 Выберите действие"),
+        input_message_content=InputTextMessageContent(message_text="🎧 Выберите действие"),
         reply_markup=btn
     )
 
