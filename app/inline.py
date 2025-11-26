@@ -33,6 +33,7 @@ async def inline_search(q: InlineQuery):
     await q.answer([result], cache_time=0)
 
 @router.callback_query(F.data.startswith("dl_"))
+print("asdf")
 async def on_dl(cb: CallbackQuery):
     query = cb.data[3:]
 
