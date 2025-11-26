@@ -5,7 +5,7 @@ import asyncio
 from aiogram import Router, F
 from aiogram.types import (
     InlineQuery, InlineQueryResultArticle,
-    InputTextMessageContent, ChosenInlineResult
+    InputTextMessageContent,BufferedInputFile, ChosenInlineResult
 )
 from aiogram.types.input_file import FSInputFile
 from config import bot
@@ -56,37 +56,33 @@ async def inline_search(q: InlineQuery):
 
 @router.chosen_inline_result()
 async def on_choose(res: ChosenInlineResult):
-    track = TRACKS_TEMP.get(res.result_id)
+    tid = res.result_id
+    track = TRACKS_TEMP.get(tid)
     if not track:
         return
 
     chat_id = res.from_user.id
 
-    url = track["url"]
+    # --------- скачиваем mp3 ---------
+    async with aiohttp.ClientSession() as sess:
+        async with sess.get(track["mp3"]) as r:
+            mp3_bytes = await r.read()
 
-    # если файл был отправлен ранее — отправим из кэша
-    if url in AUDIO_CACHE:
-        await res.bot.send_audio(
-            chat_id,
-            audio=AUDIO_CACHE[url],
-            title=track["title"],
-            performer=track["artist"],
-            thumbnail=track.get("thumb")
-        )
-        return
+    # --------- скачиваем обложку ---------
+    thumb_bytes = None
+    if track.get("thumb"):
+        async with aiohttp.ClientSession() as sess:
+            async with sess.get(track["thumb"]) as r:
+                thumb_bytes = await r.read()
 
-    # иначе — качаем mp3
-    mp3 = await get_soundcloud_mp3_url(url)
+    thumb = BufferedInputFile(thumb_bytes, filename="cover.jpg") if thumb_bytes else None
+    audio = BufferedInputFile(mp3_bytes, filename="track.mp3")
 
-    # отправляем
-    sent = await res.bot.send_audio(
-        chat_id,
-        audio=mp3,
+    await res.bot.send_audio(
+        chat_id=chat_id,
+        audio=audio,
         title=track["title"],
         performer=track["artist"],
-        thumbnail=track.get("thumb")
+        thumbnail=thumb
     )
-
-    # кэшируем file_id
-    AUDIO_CACHE[url] = sent.audio.file_id
 
