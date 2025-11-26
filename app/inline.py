@@ -9,7 +9,7 @@ from aiogram.types import (
 )
 from aiogram.types.input_file import FSInputFile
 
-from yourmodule import search_soundcloud, search_skysound, get_soundcloud_mp3_url
+from app.database.requests import search_soundcloud, search_skysound, get_soundcloud_mp3_url
 
 router = Router()
 
