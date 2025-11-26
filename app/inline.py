@@ -1,7 +1,8 @@
 import re
 import io
 import os
-import tempfile
+import json
+from aiogram.utils.json import json_dumps
 import aiohttp
 import asyncio
 import traceback
@@ -93,62 +94,30 @@ async def inline_search(q: InlineQuery):
 
 @router.chosen_inline_result()
 async def chosen(res: ChosenInlineResult):
+    # Полный дамп объекта
+    try:
+        print("=== RAW ChosenInlineResult ===")
+        print(json_dumps(res.model_dump(), indent=2, ensure_ascii=False))
+        print("=== END RAW ===")
+    except Exception as e:
+        print("Failed to dump chosen:", e, repr(res))
+
     tid = res.result_id
+
     if tid not in TRACKS_TEMP:
+        print("⚠ TRACKS_TEMP: ключ не найден:", tid)
         return
 
     track = TRACKS_TEMP[tid]
     inline_id = res.inline_message_id
 
     if not inline_id:
-        print("inline_message_id отсутствует")
+        print("❌ inline_message_id отсутствует!")
+        print("  user:", res.from_user.id)
+        print("  result_id:", res.result_id)
+        print("  query:", res.query)
+        print("  ВАЖНО: Telegram не создаёт inline_message_id для Article/input_message_content")
         return
 
-    # Стадия 1 — заменяем inline сообщение на текст
-    await res.bot.edit_message_text(
-        inline_message_id=inline_id,
-        text="🔄 Загружаю аудио…"
-    )
-
-    # Скачиваем mp3
-    try:
-        mp3_bytes = await fetch_mp3(track)
-    except Exception as e:
-        print("mp3 error:", e)
-        await res.bot.edit_message_text(
-            inline_message_id=inline_id,
-            text="❌ Ошибка загрузки аудио"
-        )
-        return
-
-    # Качаем обложку
-    thumb_bytes = None
-    try:
-        async with aiohttp.ClientSession() as s:
-            async with s.get(track["thumb"]) as r:
-                thumb_bytes = await r.read()
-    except:
-        pass
-
-    # Стадия 2 — заменяем inline сообщение НА АУДИО
-    try:
-        await res.bot.edit_message_media(
-            inline_message_id=inline_id,
-            media=InputMediaAudio(
-                media=BufferedInputFile(mp3_bytes, "track.mp3"),
-                title=track["title"],
-                performer=track["artist"],
-                thumb=BufferedInputFile(thumb_bytes, "cover.jpg") if thumb_bytes else None,
-            )
-        )
-    except Exception as e:
-        print("edit_message_media error:", e)
-        await res.bot.edit_message_text(
-            inline_message_id=inline_id,
-            text="❌ Ошибка при отправке аудио"
-        )
-        return
-
-    # Чистим временный кеш
-    del TRACKS_TEMP[tid]
+    print("✅ inline_message_id:", inline_id)
 
