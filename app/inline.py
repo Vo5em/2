@@ -98,23 +98,30 @@ async def chosen(res: ChosenInlineResult):
         return
 
     track = TRACKS_TEMP[tid]
-    chat_id = res.from_user.id
 
-    # СТАДИЯ 1 — отправляем временное сообщение
-    placeholder = await res.bot.send_message(
-        chat_id=chat_id,
-        text="🔄 Загружаю аудио…",
+    inline_id = res.inline_message_id
+    if not inline_id:
+        print("нет inline_message_id — невозможно заменить сообщение")
+        return
+
+    # Стадия 1 — заменяем inline-сообщение на "загружаю..."
+    await res.bot.edit_message_text(
+        inline_message_id=inline_id,
+        text="🔄 Загружаю аудио…"
     )
 
-    # СТАДИЯ 2 — качаем mp3
+    # Скачиваем mp3
     try:
         mp3_bytes = await fetch_mp3(track)
     except Exception as e:
         print("mp3 error:", e)
-        await placeholder.edit_text("❌ Ошибка загрузки трека")
+        await res.bot.edit_message_text(
+            inline_message_id=inline_id,
+            text="❌ Ошибка загрузки трека"
+        )
         return
 
-    # СТАДИЯ 3 — качаем обложку
+    # Скачиваем обложку
     thumb_bytes = None
     try:
         async with aiohttp.ClientSession() as s:
@@ -123,24 +130,16 @@ async def chosen(res: ChosenInlineResult):
     except:
         pass
 
-    # СТАДИЯ 4 — заменяем сообщение на АУДИО
-    try:
-        await res.bot.edit_message_media(
-            chat_id=chat_id,
-            message_id=placeholder.message_id,
-            media=InputMediaAudio(
-                media=BufferedInputFile(mp3_bytes, "track.mp3"),
-                title=track["title"],
-                performer=track["artist"],
-                thumb=BufferedInputFile(thumb_bytes, "cover.jpg") if thumb_bytes else None,
-            )
+    # Стадия 2 — ЗАМЕНЯЕМ inline-сообщение НА АУДИО
+    await res.bot.edit_message_media(
+        inline_message_id=inline_id,
+        media=InputMediaAudio(
+            media=BufferedInputFile(mp3_bytes, "track.mp3"),
+            title=track["title"],
+            performer=track["artist"],
+            thumb=BufferedInputFile(thumb_bytes, "cover.jpg") if thumb_bytes else None,
         )
+    )
 
-    except Exception as e:
-        print("edit_message_media error:", e)
-        await placeholder.edit_text("❌ Ошибка при отправке аудио")
-        return
-
-    # можно очистить временный трек
     del TRACKS_TEMP[tid]
 
