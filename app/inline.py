@@ -5,9 +5,10 @@ import asyncio
 from aiogram import Router, F
 from aiogram.types import (
     InlineQuery, InlineQueryResultArticle,
-    InputTextMessageContent, Message
+    InputTextMessageContent, ChosenInlineResult
 )
 from aiogram.types.input_file import FSInputFile
+from config import bot
 
 from app.database.requests import search_soundcloud, search_skysound, get_soundcloud_mp3_url
 
@@ -61,65 +62,66 @@ async def extract_mp3_url(track: dict):
 
 # ========== INLINE SEARCH ============
 @router.inline_query()
-async def inline_search(q: InlineQuery):
-    text = q.query.strip()
-    if not text:
-        return await q.answer([])
+async def inline_search(query: InlineQuery):
+    q = query.query.strip()
+    if not q:
+        return await query.answer([], cache_time=0)
 
-    tracks = []
-    tracks += await search_soundcloud(text)
-    tracks += await search_skysound(text)
+    tracks = await search_soundcloud(q) + await search_skysound(q)
 
     results = []
 
     for idx, track in enumerate(tracks[:30]):
-        track_id = f"{q.from_user.id}:{idx}"
-        TRACK_CACHE[track_id] = track
+        _mp3_cache[(query.from_user.id, idx)] = track
 
         results.append(
             InlineQueryResultArticle(
-                id=track_id,
+                id=str(idx),
                 title=f"{track['artist']} — {track['title']}",
                 description=track["duration"],
                 thumbnail_url=track.get("thumb"),
                 input_message_content=InputTextMessageContent(
-                    message_text=f"__dl__:{track_id}"
+                    message_text=f"Загружаю трек..."
                 )
             )
         )
 
-    await q.answer(results, cache_time=0)
+    await query.answer(results, cache_time=0)
 
 
-# ===== ПОСЛЕ ВЫБОРА ТРЕКА (ЛОВИМ ТЕКСТ "__dl__:id") =====
-@router.message(F.text.startswith("__dl__:"))
-async def deliver_audio(msg: Message):
-    track_id = msg.text.split(":")[1]
 
-    if track_id not in TRACK_CACHE:
-        return await msg.answer("Ошибка: трек не найден в кэше")
+# 2. ВЫБОР ИНЛАЙН РЕЗУЛЬТАТА — вот этот обработчик ты забыл!
+@router.chosen_inline_result()
+async def chosen_result(result: ChosenInlineResult):
+    user_id = result.from_user.id
+    idx = int(result.result_id)
 
-    track = TRACK_CACHE[track_id]
+    track = _mp3_cache.get((user_id, idx))
+    if not track:
+        return
 
-    # получаем mp3
+    # получаем mp3 ссылку
     mp3_url = await extract_mp3_url(track)
     if not mp3_url:
-        return await msg.answer("❌ Не удалось получить mp3")
+        return
 
-    async with aiohttp.ClientSession() as sess:
-        async with sess.get(mp3_url) as r:
-            audio_bytes = await r.read()
+    # скачиваем
+    async with aiohttp.ClientSession() as session:
+        async with session.get(mp3_url) as resp:
+            audio_bytes = await resp.read()
 
     bio = io.BytesIO(audio_bytes)
     bio.name = "track.mp3"
 
-    audio_file = FSInputFile(bio)
-    cover = FSInputFile("cover.jpg")   # ← ТВОЯ ОБЛОЖКА
+    # ТВОЯ ОБЛОЖКА
+    thumbnail = FSInputFile("ttumb.jpg")
 
-    await msg.answer_audio(
-        audio=audio_file,
-        performer=track["artist"],
+    # отправляем пользователю аудио
+    await bot.send_audio(
+        chat_id=user_id,
+        audio=FSInputFile(bio),
         title=track["title"],
-        thumbnail=cover
+        performer=track["artist"],
+        thumbnail=thumbnail,
     )
 
