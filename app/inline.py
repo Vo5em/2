@@ -113,8 +113,9 @@ async def chosen_result(result: ChosenInlineResult):
     bio = io.BytesIO(audio_bytes)
     bio.name = "track.mp3"
 
-    # ТВОЯ ОБЛОЖКА
-    thumbnail = FSInputFile("ttumb.jpg")
+    audio_file = FSInputFile(bio, filename="track.mp3")
+
+    thumb = FSInputFile("ttumb.jpg")
 
     # отправляем пользователю аудио
     await bot.send_audio(
@@ -122,6 +123,6 @@ async def chosen_result(result: ChosenInlineResult):
         audio=FSInputFile(bio),
         title=track["title"],
         performer=track["artist"],
-        thumbnail=thumbnail,
+        thumbnail=thumb,
     )
 
