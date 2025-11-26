@@ -84,7 +84,8 @@ async def inline_search(q: InlineQuery):
 @router.chosen_inline_result()
 async def on_choose(res: ChosenInlineResult):
     print("asdf")
-
+    chat = res.chat_instance
+    print("CHAT_INSTANCE:", chat)
     tid = res.result_id
     track = TRACKS_TEMP.get(tid)
     bot = res.bot
