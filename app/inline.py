@@ -53,6 +53,7 @@ async def inline_search(q: InlineQuery):
     if not query:
         return await q.answer([])
 
+    # Ищем треки
     tracks = []
     tracks += await search_skysound(query)
     tracks += await search_soundcloud(query)
@@ -62,7 +63,7 @@ async def inline_search(q: InlineQuery):
             InlineQueryResultArticle(
                 id="notfound",
                 title="Ничего не найдено",
-                input_message_content=InputTextMessageContent(message_text=
+                input_message_content=InputTextMessageContent(
                     f"По запросу «{query}» ничего не найдено"
                 )
             )
@@ -80,8 +81,9 @@ async def inline_search(q: InlineQuery):
                 id=tid,
                 title=f"{t['artist']} — {t['title']}",
                 description=t["source"],
-                input_message_content=InputTextMessageContent(message_text=
-                    f"Загружаю трек…"
+                thumb_url=t["thumb"],
+                input_message_content=InputTextMessageContent(
+                    message_text="⏳ Загружаю трек…"
                 )
             )
         )
@@ -91,20 +93,18 @@ async def inline_search(q: InlineQuery):
 
 @router.chosen_inline_result()
 async def chosen(res: ChosenInlineResult):
-    print("chosen:", res.result_id)
-
     tid = res.result_id
     if tid not in TRACKS_TEMP:
         return
 
     track = TRACKS_TEMP[tid]
-
     inline_id = res.inline_message_id
+
     if not inline_id:
-        print("нет inline_message_id — невозможно заменить сообщение")
+        print("inline_message_id отсутствует")
         return
 
-    # Стадия 1 — заменяем inline-сообщение на "загружаю..."
+    # Стадия 1 — заменяем inline сообщение на текст
     await res.bot.edit_message_text(
         inline_message_id=inline_id,
         text="🔄 Загружаю аудио…"
@@ -117,11 +117,11 @@ async def chosen(res: ChosenInlineResult):
         print("mp3 error:", e)
         await res.bot.edit_message_text(
             inline_message_id=inline_id,
-            text="❌ Ошибка загрузки трека"
+            text="❌ Ошибка загрузки аудио"
         )
         return
 
-    # Скачиваем обложку
+    # Качаем обложку
     thumb_bytes = None
     try:
         async with aiohttp.ClientSession() as s:
@@ -130,16 +130,25 @@ async def chosen(res: ChosenInlineResult):
     except:
         pass
 
-    # Стадия 2 — ЗАМЕНЯЕМ inline-сообщение НА АУДИО
-    await res.bot.edit_message_media(
-        inline_message_id=inline_id,
-        media=InputMediaAudio(
-            media=BufferedInputFile(mp3_bytes, "track.mp3"),
-            title=track["title"],
-            performer=track["artist"],
-            thumb=BufferedInputFile(thumb_bytes, "cover.jpg") if thumb_bytes else None,
+    # Стадия 2 — заменяем inline сообщение НА АУДИО
+    try:
+        await res.bot.edit_message_media(
+            inline_message_id=inline_id,
+            media=InputMediaAudio(
+                media=BufferedInputFile(mp3_bytes, "track.mp3"),
+                title=track["title"],
+                performer=track["artist"],
+                thumb=BufferedInputFile(thumb_bytes, "cover.jpg") if thumb_bytes else None,
+            )
         )
-    )
+    except Exception as e:
+        print("edit_message_media error:", e)
+        await res.bot.edit_message_text(
+            inline_message_id=inline_id,
+            text="❌ Ошибка при отправке аудио"
+        )
+        return
 
+    # Чистим временный кеш
     del TRACKS_TEMP[tid]
 
