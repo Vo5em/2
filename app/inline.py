@@ -23,7 +23,7 @@ TRACKS_TEMP: dict[str, dict] = {}
 
 FILE_CACHE = {}  # source+url → file_id
 
-
+file_id = "AgACAgIAAxkBAAIB02koTGtu91jxPbuYV2xoa7z0KkddAAI4Dmsb8jhBSe6B7I8inXUkAQADAgADeQADNgQ"
 # Сохраняем в кэш
 def save_file_id(key, file_id):
     FILE_CACHE[key] = file_id
@@ -80,7 +80,7 @@ async def inline_search(query: InlineQuery):
 
     result = InlineQueryResultPhoto(
         id="track1",
-        photo_url=track["thumb"],       # большая фотка
+        photo_url=file_id,       # большая фотка
         thumbnail_url=track["thumb"],   # миниатюра в поиске
         caption="⏳ Загружаю аудио…"     # Текст заглушки
     )
