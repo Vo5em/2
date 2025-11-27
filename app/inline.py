@@ -3,8 +3,8 @@ import traceback
 from aiogram import Router
 from aiogram.types import (
     InlineQuery, InlineQueryResultArticle,
-    InputTextMessageContent, InputMediaAudio,
-    ChosenInlineResult
+    InputTextMessageContent, InputMediaAudio,InlineKeyboardMarkup,
+    InlineKeyboardButton, ChosenInlineResult
 )
 from config import bot
 
@@ -82,6 +82,11 @@ async def inline_search(q: InlineQuery):
                 title=f"{t['artist']} — {t['title']}",
                 description=f"{t['source']} / {t['duration']}",
                 thumb_url=t["thumb"],
+                reply_markup=InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [InlineKeyboardButton(text="⏳ Загрузка…", callback_data="stub")]
+                    ]
+                ),
                 input_message_content=InputTextMessageContent(
                     message_text="⏳ Загрузка трека…"
                 )
@@ -167,8 +172,7 @@ async def diagnostic_chosen(result: ChosenInlineResult):
             media=InputMediaAudio(
                 media=mp3_url,
                 title=track.get("title"),
-                performer=track.get("artist"),
-                thumbnail=track.get("thumb")
+                performer=track.get("artist")
             )
         )
         print("✅ edit_message_media OK (no exception)")
