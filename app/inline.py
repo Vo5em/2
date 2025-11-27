@@ -1,66 +1,90 @@
 import aiohttp
 from aiogram import Router
 from aiogram.types import (
-    InlineQuery, InlineQueryResultDocument
+    InlineQuery, InlineQueryResultArticle,
+    InputTextMessageContent, InputMediaAudio,
+    ChosenInlineResult
 )
+from config import bot
 
 from app.database.requests import (
     search_soundcloud, search_skysound,
-    get_soundcloud_mp3_url,
+    get_soundcloud_mp3_url, get_skysound_mp3,
     rank_tracks_by_similarity
 )
 
 router = Router()
-
-# tid → track data
-TRACKS_TEMP: dict[str, dict] = {}
+TRACKS = {}
 
 
-# ==========================
-# INLINE SEARCH
-# ==========================
+async def resolve_mp3_url(track):
+    if track["source"] == "SoundCloud":
+        return await get_soundcloud_mp3_url(track["url"])
+
+    if track["source"] == "SkySound":
+        return await get_skysound_mp3(track["url"])
+
+    return None
+
+
 @router.inline_query()
 async def inline_search(q: InlineQuery):
     query = q.query.strip()
     if not query:
         return await q.answer([])
 
-    # 1. ищем треки
     tracks = []
     tracks += await search_skysound(query)
     tracks += await search_soundcloud(query)
     tracks = rank_tracks_by_similarity(query, tracks)
 
     results = []
+    for i, t in enumerate(tracks[:18]):
+        tid = f"{q.from_user.id}:{i}"
+        TRACKS[tid] = t
 
-    for i, t in enumerate(tracks[:20]):
-        tid = f"{q.from_user.id}_{i}"
-
-        # заранее получаем прямой mp3 URL
-        if t["source"] == "SoundCloud":
-            mp3_url = await get_soundcloud_mp3_url(t["url"])
-        else:
-            mp3_url = t["url"]    # у тебя уже готовый MP3
-
-        # сохраняем (если вдруг пригодится)
-        TRACKS_TEMP[tid] = {
-            "artist": t["artist"],
-            "title": t["title"],
-            "thumb": t["thumb"],
-            "mp3": mp3_url
-        }
-
-        # 2. Telegram сам скачает этот mp3 и отправит как аудио
         results.append(
-            InlineQueryResultDocument(
+            InlineQueryResultArticle(
                 id=tid,
                 title=f"{t['artist']} — {t['title']}",
-                description="🎵 " + t["artist"],
+                description=f"{t['source']} / {t['duration']}",
                 thumb_url=t["thumb"],
-                document_url=mp3_url,
-                mime_type="audio/mpeg",
+                input_message_content=InputTextMessageContent(
+                    message_text="⏳ Загрузка трека…"
+                )
             )
         )
 
-    await q.answer(results, cache_time=1)
+    await q.answer(results, cache_time=0)
+
+
+@router.chosen_inline_result()
+async def chosen(result: ChosenInlineResult):
+    track = TRACKS.get(result.result_id)
+    if not track:
+        return
+
+    inline_id = result.inline_message_id
+    if not inline_id:
+        return
+
+    # получаем прямой mp3 URL
+    mp3_url = await resolve_mp3_url(track)
+    if not mp3_url:
+        await bot.edit_message_text(
+            "❌ Ошибка загрузки трека",
+            inline_message_id=inline_id
+        )
+        return
+
+    # заменяем текст → аудио через URL
+    await bot.edit_message_media(
+        inline_message_id=inline_id,
+        media=InputMediaAudio(
+            media=mp3_url,
+            title=track["title"],
+            performer=track["artist"],
+            thumbnail=track["thumb"]
+        )
+    )
 
