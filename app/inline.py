@@ -21,6 +21,20 @@ router = Router()
 user_tracks ={}
 TRACKS_TEMP: dict[str, dict] = {}
 
+FILE_CACHE = {}  # source+url → file_id
+
+
+# Сохраняем в кэш
+def save_file_id(key, file_id):
+    FILE_CACHE[key] = file_id
+
+
+# Получаем из кэша
+def get_file_id(key):
+    return FILE_CACHE.get(key)
+
+
+# Скачивание MP3
 async def fetch_mp3(track):
     url = track["url"]
 
@@ -95,6 +109,10 @@ async def inline_search(q: InlineQuery):
     await q.answer(results, cache_time=1)
 
 
+
+# ===============================
+#       USER CHOSE RESULT
+# ===============================
 @router.chosen_inline_result()
 async def chosen(res: ChosenInlineResult):
 
