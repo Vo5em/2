@@ -35,26 +35,26 @@ def get_file_id(key):
 
 
 # Скачивание MP3
-async def fetch_mp3(track):
-    url = track["url"]
+async def fetch_mp3(t):
+    url = t["url"]
 
-    if track["source"] == "SoundCloud":
+    if t["source"] == "SoundCloud":
         mp3 = await get_soundcloud_mp3_url(url)
         if not mp3:
             raise Exception("SC mp3 not found")
         final = mp3
 
     else:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as r:
+        async with aiohttp.ClientSession() as s:
+            async with s.get(url) as r:
                 html = await r.text()
         links = re.findall(r'https:\/\/[^\s"]+\.mp3', html)
         if not links:
             raise Exception("SkySound mp3 not found")
         final = links[0]
 
-    async with aiohttp.ClientSession() as session:
-        async with session.get(final) as r:
+    async with aiohttp.ClientSession() as s:
+        async with s.get(final) as r:
             if r.status != 200:
                 raise Exception("download error")
             return await r.read()
@@ -63,11 +63,9 @@ async def fetch_mp3(track):
 @router.inline_query()
 async def inline_search(q: InlineQuery):
     query = q.query.strip()
-
     if not query:
         return await q.answer([])
 
-    # Получаем треки
     tracks = []
     tracks += await search_skysound(query)
     tracks += await search_soundcloud(query)
@@ -86,22 +84,38 @@ async def inline_search(q: InlineQuery):
 
     for i, t in enumerate(tracks[:20]):
         tid = f"{q.from_user.id}_{i}"
-        TRACKS_TEMP[tid] = t
 
-        # Показываем Article с обложкой
+        #
+        # ВАЖНО: заранее сохраняем mp3 URL
+        #
+        if t["source"] == "SoundCloud":
+            mp3_url = await get_soundcloud_mp3_url(t["url"])
+        else:
+            # в skysound url == страница → mp3 будет искаться позже через fetch_mp3
+            mp3_url = t["url"]
+
+        TRACKS_TEMP[tid] = {
+            "artist": t["artist"],
+            "title": t["title"],
+            "thumb": t["thumb"],
+            "source": t["source"],
+            "url": t["url"],     # нужен fetch_mp3
+            "mp3": mp3_url       # нужен chosen_inline_result
+        }
+
         results.append(
             InlineQueryResultArticle(
                 id=tid,
                 title=f"{t['artist']} — {t['title']}",
                 description=t["source"],
-                thumb_url=t["thumb"],  # обложка в inline preview
+                thumb_url=t["thumb"],
                 reply_markup=InlineKeyboardMarkup(
                     inline_keyboard=[
                         [InlineKeyboardButton(text="⏳ Загрузка…", callback_data="stub")]
                     ]
                 ),
-                input_message_content=InputTextMessageContent(message_text=
-                    "⏳ Загружаю трек…"
+                input_message_content=InputTextMessageContent(
+                    message_text="⏳ Загружаю трек…"
                 )
             )
         )
@@ -115,7 +129,6 @@ async def inline_search(q: InlineQuery):
 # ===============================
 @router.chosen_inline_result()
 async def chosen_track(result: ChosenInlineResult):
-
     inline_id = result.inline_message_id
     if not inline_id:
         print("❌ inline_message_id отсутствует")
@@ -123,29 +136,59 @@ async def chosen_track(result: ChosenInlineResult):
 
     track_id = result.result_id
     track = TRACKS_TEMP.get(track_id)
+    if not track:
+        print("❌ track не найден")
+        return
 
-    # 1) Пишем "Загружаю"
+    # 1) Обновляем сообщение
     await bot.edit_message_text(
         inline_message_id=inline_id,
         text="🔄 Загружаю аудио…"
     )
 
     # 2) Скачиваем MP3
-    async with aiohttp.ClientSession() as s:
-        async with s.get(track["mp3"], timeout=25) as r:
-            audio_bytes = await r.read()
-
-    # 3) Отдаём аудио как media update
-    await bot.edit_message_media(
-        inline_message_id=inline_id,
-        media=InputMediaAudio(
-            media=BufferedInputFile(
-                audio_bytes,
-                filename=f"{track['artist']} - {track['title']}.mp3"
-            ),
-            title=track["title"],
-            performer=track["artist"],
-            thumb="ttumb.jpg"
+    try:
+        audio_bytes = await fetch_mp3(track)
+    except Exception as e:
+        print("mp3 error:", e)
+        await bot.edit_message_text(
+            inline_message_id=inline_id,
+            text="❌ Ошибка загрузки MP3"
         )
-    )
+        return
+
+    # 3) Качаем обложку
+    thumb_bytes = None
+    try:
+        async with aiohttp.ClientSession() as s:
+            async with s.get(track["thumb"]) as r:
+                if r.status == 200:
+                    thumb_bytes = await r.read()
+    except:
+        pass
+
+    # 4) Заменяем сообщение на аудио
+    try:
+        await bot.edit_message_media(
+            inline_message_id=inline_id,
+            media=InputMediaAudio(
+                media=BufferedInputFile(
+                    audio_bytes,
+                    filename=f"{track['artist']} - {track['title']}.mp3"
+                ),
+                title=track["title"],
+                performer=track["artist"],
+                thumb=(
+                    BufferedInputFile(thumb_bytes, "cover.jpg")
+                    if thumb_bytes else None
+                )
+            )
+        )
+    except Exception as e:
+        print("edit_message_media error:", e)
+        await bot.edit_message_text(
+            inline_message_id=inline_id,
+            text="❌ Ошибка при отправке аудио"
+        )
+        return
 
