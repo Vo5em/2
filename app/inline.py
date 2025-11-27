@@ -28,6 +28,7 @@ async def resolve_mp3_url(track):
     return None
 
 
+
 async def probe_url(session, url, timeout=10):
     """HEAD + small GET probe; возвращает dict с info"""
     info = {"url": url, "head": None, "head_status": None, "content_type": None,
@@ -57,6 +58,37 @@ async def probe_url(session, url, timeout=10):
         else:
             info["error"] = f"GET failed: {repr(e_get)}"
     return info
+
+
+@router.inline_query()
+async def inline_search(q: InlineQuery):
+    query = q.query.strip()
+    if not query:
+        return await q.answer([])
+
+    tracks = []
+    tracks += await search_skysound(query)
+    tracks += await search_soundcloud(query)
+    tracks = rank_tracks_by_similarity(query, tracks)
+
+    results = []
+    for i, t in enumerate(tracks[:18]):
+        tid = f"{q.from_user.id}:{i}"
+        TRACKS[tid] = t
+
+        results.append(
+            InlineQueryResultArticle(
+                id=tid,
+                title=f"{t['artist']} — {t['title']}",
+                description=f"{t['source']} / {t['duration']}",
+                thumb_url=t["thumb"],
+                input_message_content=InputTextMessageContent(
+                    message_text="⏳ Загрузка трека…"
+                )
+            )
+        )
+
+    await q.answer(results, cache_time=0)
 
 
 @router.chosen_inline_result()
