@@ -114,75 +114,38 @@ async def inline_search(q: InlineQuery):
 #       USER CHOSE RESULT
 # ===============================
 @router.chosen_inline_result()
-async def chosen(res: ChosenInlineResult):
+async def chosen_track(result: ChosenInlineResult):
 
-    print("\n===== RAW CHOSEN RESULT =====")
-    print(res.model_dump_json(indent=2))
-    print("======= END RAW =======\n")
-
-    tid = res.result_id
-
-    if tid not in TRACKS_TEMP:
-        print("❌ TRACKS_TEMP: нет такого tid")
-        return
-
-    track = TRACKS_TEMP[tid]
-    inline_id = res.inline_message_id
-
+    inline_id = result.inline_message_id
     if not inline_id:
-        print("❌ inline_message_id отсутствует — Telegram отправил сообщение от пользователя")
-        print("⭐ Это означает, что inline кнопка НЕ СРАБОТАЛА")
+        print("❌ inline_message_id отсутствует")
         return
 
-    # Шаг 1 — показываем прогресс
-    await res.bot.edit_message_text(
+    track_id = result.result_id
+    track = TRACKS_TEMP.get(track_id)
+
+    # 1) Пишем "Загружаю"
+    await bot.edit_message_text(
         inline_message_id=inline_id,
         text="🔄 Загружаю аудио…"
     )
 
-    # Шаг 2 — скачиваем mp3
-    try:
-        mp3_bytes = await fetch_mp3(track)
-    except Exception as e:
-        print("mp3 error:", e)
-        await res.bot.edit_message_text(
-            inline_message_id=inline_id,
-            text="❌ Ошибка загрузки аудио"
+    # 2) Скачиваем MP3
+    async with aiohttp.ClientSession() as s:
+        async with s.get(track["mp3"], timeout=25) as r:
+            audio_bytes = await r.read()
+
+    # 3) Отдаём аудио как media update
+    await bot.edit_message_media(
+        inline_message_id=inline_id,
+        media=InputMediaAudio(
+            media=BufferedInputFile(
+                audio_bytes,
+                filename=f"{track['artist']} - {track['title']}.mp3"
+            ),
+            title=track["title"],
+            performer=track["artist"],
+            thumb="ttumb.jpg"
         )
-        return
-
-    # Шаг 3 — качаем обложку
-    thumb_bytes = None
-    try:
-        async with aiohttp.ClientSession() as s:
-            async with s.get(track["thumb"]) as r:
-                thumb_bytes = await r.read()
-    except:
-        pass
-
-    # Шаг 4 — отправляем аудио (заменяем inline сообщение)
-    from aiogram.types import BufferedInputFile
-
-    try:
-        await res.bot.edit_message_media(
-            inline_message_id=inline_id,
-            media=InputMediaAudio(
-                media=BufferedInputFile(mp3_bytes, "track.mp3"),
-                title=track["title"],
-                performer=track["artist"],
-                thumb=BufferedInputFile(thumb_bytes, "cover.jpg") if thumb_bytes else None
-            )
-        )
-    except Exception as e:
-        print("edit_message_media error:", e)
-        await res.bot.edit_message_text(
-            inline_message_id=inline_id,
-            text="❌ Ошибка при отправке аудио"
-        )
-        return
-
-    # Чистим
-    del TRACKS_TEMP[tid]
-
-    print("✔ Аудио отправлено успешно!")
+    )
 
