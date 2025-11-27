@@ -129,66 +129,120 @@ async def inline_search(q: InlineQuery):
 # ===============================
 @router.chosen_inline_result()
 async def chosen_track(result: ChosenInlineResult):
+    print("\n===== CHOSEN_INLINE_RESULT =====")
+    print("RAW RESULT:", result.model_dump_json(indent=2))
+
     inline_id = result.inline_message_id
     if not inline_id:
-        print("❌ inline_message_id отсутствует")
+        print("❌ ERROR: inline_message_id отсутствует — Telegram НЕ создаёт его для Text Article")
         return
+
+    print(f"✔ inline_message_id: {inline_id}")
 
     track_id = result.result_id
+    print("track_id:", track_id)
+
     track = TRACKS_TEMP.get(track_id)
     if not track:
-        print("❌ track не найден")
+        print("❌ ERROR: TRACKS_TEMP не содержит запись:", track_id)
+        print("TRACKS_TEMP keys:", list(TRACKS_TEMP.keys()))
         return
 
-    # 1) Обновляем сообщение
-    await bot.edit_message_text(
-        inline_message_id=inline_id,
-        text="🔄 Загружаю аудио…"
-    )
+    print("✔ Найден track:", track)
 
+    # =====================
+    # 1) Обновляем сообщение
+    # =====================
+    try:
+        await bot.edit_message_text(
+            inline_message_id=inline_id,
+            text="🔄 Загружаю аудио…"
+        )
+        print("✔ edit_message_text OK")
+    except Exception as e:
+        print("❌ ERROR: edit_message_text:", e)
+        return
+
+    # =====================
     # 2) Скачиваем MP3
+    # =====================
+    print("⬇ Скачиваю MP3...")
+
     try:
         audio_bytes = await fetch_mp3(track)
+        print(f"✔ MP3 скачан: {len(audio_bytes)} bytes")
     except Exception as e:
-        print("mp3 error:", e)
+        print("❌ ERROR: fetch_mp3:", e)
         await bot.edit_message_text(
             inline_message_id=inline_id,
             text="❌ Ошибка загрузки MP3"
         )
         return
 
+    if len(audio_bytes) < 50_000:
+        print("❌ ERROR: MP3 слишком маленький, возможно битый файл:", len(audio_bytes))
+        await bot.edit_message_text(
+            inline_message_id=inline_id,
+            text="❌ Файл поврежден"
+        )
+        return
+
+    # =====================
     # 3) Качаем обложку
+    # =====================
+    print("⬇ Скачиваю обложку...")
+
     thumb_bytes = None
     try:
         async with aiohttp.ClientSession() as s:
             async with s.get(track["thumb"]) as r:
+                print("Thumb status:", r.status)
                 if r.status == 200:
                     thumb_bytes = await r.read()
-    except:
-        pass
+                    print("✔ Обложка скачана:", len(thumb_bytes), "bytes")
+                else:
+                    print("⚠ Обложка недоступна:", r.status)
+    except Exception as e:
+        print("⚠ Ошибка загрузки обложки:", e)
 
-    # 4) Заменяем сообщение на аудио
+    # =====================
+    # 4) Формируем InputMediaAudio
+    # =====================
+    print("Создаю InputMediaAudio...")
+
+    try:
+        media = InputMediaAudio(
+            media=BufferedInputFile(audio_bytes, filename="track.mp3"),
+            title=track["title"],
+            performer=track["artist"],
+            thumbnail=(
+                BufferedInputFile(thumb_bytes, "cover.jpg")
+                if thumb_bytes else None
+            )
+        )
+        print("✔ InputMediaAudio OK")
+    except Exception as e:
+        print("❌ ERROR: создание InputMediaAudio:", e)
+        return
+
+    # =====================
+    # 5) edit_message_media
+    # =====================
+    print("🔄 Выполняю edit_message_media...")
+
     try:
         await bot.edit_message_media(
             inline_message_id=inline_id,
-            media=InputMediaAudio(
-                media=BufferedInputFile(
-                    audio_bytes,
-                    filename=f"{track['artist']} - {track['title']}.mp3"
-                ),
-                title=track["title"],
-                performer=track["artist"],
-                thumb=(
-                    BufferedInputFile(thumb_bytes, "cover.jpg")
-                    if thumb_bytes else None
-                )
-            )
+            media=media
         )
+        print("🎉✔ Аудио успешно отправлено через edit_message_media!")
     except Exception as e:
-        print("edit_message_media error:", e)
+        print("❌ ERROR: edit_message_media:", e)
         await bot.edit_message_text(
             inline_message_id=inline_id,
             text="❌ Ошибка при отправке аудио"
         )
         return
+
+    print("===== END CHOSEN =====\n")
 
