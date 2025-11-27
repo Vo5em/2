@@ -161,20 +161,17 @@ async def diagnostic_chosen(result: ChosenInlineResult):
     ct = probe.get("content_type") or (probe.get("get_headers") or {}).get("Content-Type")
     print("Detected content-type:", ct)
 
-    # Если HEAD/GET показывают redirect (3xx) — распечатай финальный URL
-    # (aiohttp followed redirects by default, headers have final) — ok.
-
-    # Попытаемся выполнить edit_message_media через URL — с подробной отладкой ошибок
+    audio = InputMediaAudio(
+        media=mp3_url,  # прямая ссылка
+        title=f"{track.get("artist")} — {track.get("title")}",  # красивое название
+        performer=track.get("artist")
+    )
     try:
         print("Attempting bot.edit_message_media(inline_message_id=..., media=InputMediaAudio(media=mp3_url))")
         await bot.edit_message_media(
             inline_message_id=inline_id,
-            media=InputMediaAudio(
-                media=mp3_url,
-                title=track.get("title"),
-                performer=track.get("artist")
-            )
-        )
+            media=audio)
+
         print("✅ edit_message_media OK (no exception)")
         return
     except Exception as e:
