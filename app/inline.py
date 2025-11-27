@@ -94,6 +94,21 @@ async def inline_search(q: InlineQuery):
 @router.message(F.via_bot)
 async def handle_inline_sent_message(msg: Message):
 
+    print("\n========= VIA BOT HANDLER =========")
+    print("Handler triggered for message id:", msg.message_id)
+
+    # Проверяем via_bot факт
+    if msg.via_bot:
+        print("✔ via_bot exists:", msg.via_bot.id, msg.via_bot.username)
+    else:
+        print("❌ ERROR: msg.via_bot == None (THIS SHOULD NOT HAPPEN!)")
+        return
+
+    print("Message text:", msg.text)
+    print("From user:", msg.from_user.id)
+    print("Chat ID:", msg.chat.id)
+    print("===================================")
+
     text = msg.text or ""
     user_id = msg.from_user.id
 
