@@ -3,7 +3,6 @@ import aiohttp
 from aiogram import Router, F
 from aiogram.types import (
     InlineQuery, InlineQueryResultArticle,
-    InlineKeyboardButton, InlineKeyboardMarkup,
     InputTextMessageContent, InputMediaAudio,
     BufferedInputFile, Message
 )
@@ -12,14 +11,16 @@ from config import bot
 from app.database.requests import search_soundcloud, search_skysound, get_soundcloud_mp3_url
 from app.database.requests import rank_tracks_by_similarity
 
-
 router = Router()
 
+# tid → track-info
 TRACKS_TEMP: dict[str, dict] = {}
 
 
+# ===========================
+# СКАЧИВАНИЕ MP3
+# ===========================
 async def fetch_mp3(t):
-    """Скачивает mp3 файл"""
     if t["source"] == "SoundCloud":
         mp3_url = await get_soundcloud_mp3_url(t["url"])
     else:
@@ -30,6 +31,9 @@ async def fetch_mp3(t):
             return await r.read()
 
 
+# ===========================
+# СКАЧИВАНИЕ ОБЛОЖКИ
+# ===========================
 async def fetch_thumb(url):
     try:
         async with aiohttp.ClientSession() as s:
@@ -37,13 +41,13 @@ async def fetch_thumb(url):
                 if r.status == 200:
                     return await r.read()
     except:
-        return None
+        pass
     return None
 
 
-# ==========================
-# 1. INLINE SEARCH
-# ==========================
+# ==========================================
+# 1. INLINE SEARCH (показываем обложки)
+# ==========================================
 @router.inline_query()
 async def inline_search(q: InlineQuery):
     query = q.query.strip()
@@ -60,13 +64,8 @@ async def inline_search(q: InlineQuery):
     for i, t in enumerate(tracks[:20]):
         tid = f"{q.from_user.id}_{i}"
 
-        TRACKS_TEMP[tid] = {
-            "artist": t["artist"],
-            "title": t["title"],
-            "thumb": t["thumb"],
-            "source": t["source"],
-            "url": t["url"]
-        }
+        # сохраняем трек в кэш
+        TRACKS_TEMP[tid] = t
 
         results.append(
             InlineQueryResultArticle(
@@ -74,89 +73,94 @@ async def inline_search(q: InlineQuery):
                 title=f"{t['artist']} — {t['title']}",
                 description=t["source"],
                 thumb_url=t["thumb"],
-                reply_markup=InlineKeyboardMarkup(
-                    inline_keyboard=[
-                        [InlineKeyboardButton(text="Загружаю…", callback_data="stub")]
-                    ]
-                ),
                 input_message_content=InputTextMessageContent(
-                    message_text=f"Загружаю {t['artist']} — {t['title']}…"
+                    message_text=f"[id:{tid}] ⏳ Загружаю {t['artist']} — {t['title']}…"
                 )
             )
         )
 
-    await q.answer(results, cache_time=1)
+    await q.answer(results, cache_time=0)
 
 
-# ==========================
-# 2. ПОЛЬЗОВАТЕЛЬ ВЫБРАЛ (как у конкурента)
-# ==========================
+# ==============================================================
+# 2. ПОЛЬЗОВАТЕЛЬ ОТПРАВИЛ INLINE ARTICLE (тут мы получаем chat_id)
+# ==============================================================
+
 @router.message(F.via_bot)
-async def handle_inline_sent_message(msg: Message):
+async def on_inline_message(msg: Message):
 
-    print("\n========= VIA BOT HANDLER =========")
-    print("Handler triggered for message id:", msg.message_id)
+    print("\n============= VIA BOT =============")
+    print("via_bot:", msg.via_bot)
+    print("chat_id:", msg.chat.id)
+    print("message_id:", msg.message_id)
+    print("text:", msg.text)
+    print("===================================\n")
 
-    # Проверяем via_bot факт
-    if msg.via_bot:
-        print("✔ via_bot exists:", msg.via_bot.id, msg.via_bot.username)
-    else:
-        print("❌ ERROR: msg.via_bot == None (THIS SHOULD NOT HAPPEN!)")
+    if not msg.text:
         return
 
-    print("Message text:", msg.text)
-    print("From user:", msg.from_user.id)
-    print("Chat ID:", msg.chat.id)
-    print("===================================")
-
-    text = msg.text or ""
-    user_id = msg.from_user.id
-
-    # парсим track_id
-    # text == "Загружаю ARTIST — TITLE…"
-    track_id = None
-    for tid in TRACKS_TEMP.keys():
-        if tid.startswith(f"{user_id}_"):
-            track_id = tid
-            break
-
-    if not track_id:
+    # -----------------------------------------------------------
+    # ВАЖНО: извлекаем tid прямо из текста
+    # пример: "[id:123_4] ⏳ Загружаю Artist — Title…"
+    # -----------------------------------------------------------
+    m = re.search(r"\[id:(.+?)\]", msg.text)
+    if not m:
+        print("❌ tid not found in message text")
         return
 
-    track = TRACKS_TEMP.get(track_id)
+    tid = m.group(1)
+
+    track = TRACKS_TEMP.get(tid)
     if not track:
+        print("❌ track not found in TRACKS_TEMP:", tid)
         return
 
     chat_id = msg.chat.id
     message_id = msg.message_id
 
-    # обновляем сообщение
+    # 1) обновляем текст → "скачиваю"
     await bot.edit_message_text(
         chat_id=chat_id,
         message_id=message_id,
         text="⏳ Скачиваю…"
     )
 
-    # mp3
-    audio_bytes = await fetch_mp3(track)
+    # 2) скачиваем mp3
+    try:
+        audio_bytes = await fetch_mp3(track)
+    except Exception as e:
+        print("MP3 ERROR:", e)
+        await bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=message_id,
+            text="❌ Ошибка загрузки файла"
+        )
+        return
 
-    # обложка
+    # 3) скачиваем обложку
     cover_bytes = await fetch_thumb(track["thumb"])
 
+    # 4) формируем audio media
     media = InputMediaAudio(
         media=BufferedInputFile(audio_bytes, "track.mp3"),
         title=track["title"],
         performer=track["artist"],
-        thumbnail=(
-            BufferedInputFile(cover_bytes, "cover.jpg")
-            if cover_bytes else None
-        )
+        thumbnail=BufferedInputFile(cover_bytes, "cover.jpg") if cover_bytes else None
     )
 
-    # заменяем сообщение на аудио
-    await bot.edit_message_media(
-        chat_id=chat_id,
-        message_id=message_id,
-        media=media
-    )
+    # 5) заменяем текстовое сообщение → аудио
+    try:
+        await bot.edit_message_media(
+            chat_id=chat_id,
+            message_id=message_id,
+            media=media
+        )
+    except Exception as e:
+        print("EDIT MEDIA ERROR:", e)
+        await bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=message_id,
+            text="❌ Ошибка при отправке аудио"
+        )
+        return
 
