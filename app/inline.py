@@ -153,39 +153,6 @@ async def chosen_track(result: ChosenInlineResult):
     # =====================
     # 1) Обновляем сообщение
     # =====================
-    try:
-        await bot.edit_message_text(
-            inline_message_id=inline_id,
-            text="🔄 Загружаю аудио…"
-        )
-        print("✔ edit_message_text OK")
-    except Exception as e:
-        print("❌ ERROR: edit_message_text:", e)
-        return
-
-    # =====================
-    # 2) Скачиваем MP3
-    # =====================
-    print("⬇ Скачиваю MP3...")
-
-    try:
-        audio_bytes = await fetch_mp3(track)
-        print(f"✔ MP3 скачан: {len(audio_bytes)} bytes")
-    except Exception as e:
-        print("❌ ERROR: fetch_mp3:", e)
-        await bot.edit_message_text(
-            inline_message_id=inline_id,
-            text="❌ Ошибка загрузки MP3"
-        )
-        return
-
-    if len(audio_bytes) < 50_000:
-        print("❌ ERROR: MP3 слишком маленький, возможно битый файл:", len(audio_bytes))
-        await bot.edit_message_text(
-            inline_message_id=inline_id,
-            text="❌ Файл поврежден"
-        )
-        return
 
     # =====================
     # 3) Качаем обложку
