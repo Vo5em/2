@@ -188,5 +188,5 @@ async def diagnostic_chosen(result: ChosenInlineResult):
     except Exception as e2:
         print("Fallback edit_message_text also failed:", repr(e2))
 
-    print("===== END DIAGNOSTIC =====\n")
+    print("===== END DIAGNOSTIC ====\n")
 
