@@ -99,7 +99,7 @@ async def inline_search(q: InlineQuery):
 
 @router.chosen_inline_result()
 async def diagnostic_chosen(result: ChosenInlineResult):
-    print("\n===== CHOSEN_INLINE_RESULT (download → upload → edit) =====")
+    print("\n===== CHOSEN_INLINE_RESULT (download → upload → edit WITH THUMB) =====")
 
     tid = result.result_id
     track = TRACKS.get(tid)
@@ -112,7 +112,7 @@ async def diagnostic_chosen(result: ChosenInlineResult):
 
     print("✔ Track:", track)
 
-    # --- 1. Получаем прямой mp3 URL ---
+    # ==== 1. Получаем прямой mp3 URL ====
     try:
         if track.get("source") == "SoundCloud":
             mp3_url = await get_soundcloud_mp3_url(track["url"])
@@ -131,7 +131,7 @@ async def diagnostic_chosen(result: ChosenInlineResult):
 
     print("✔ Resolved mp3:", mp3_url)
 
-    # --- 2. Скачиваем mp3 ---
+    # ==== 2. Скачиваем аудио ====
     import aiohttp
     async with aiohttp.ClientSession() as session:
         try:
@@ -149,8 +149,16 @@ async def diagnostic_chosen(result: ChosenInlineResult):
 
     print(f"✔ Downloaded {len(data)} bytes")
 
-    # --- 3. Загружаем пользователю в личку ---
+    # ==== 3. Загружаем thumbnail ====
+    try:
+        with open("ttumb.jpg", "rb") as f:
+            thumb_data = f.read()
+        thumb = BufferedInputFile(thumb_data, filename="thumb.jpg")
+    except Exception as e:
+        print("❌ Thumbnail load failed:", e)
+        thumb = None
 
+    # ==== 4. Загружаем пользователю в личку ====
     audio_file = BufferedInputFile(
         data,
         filename=f"{track['artist']} - {track['title']}.mp3"
@@ -160,8 +168,9 @@ async def diagnostic_chosen(result: ChosenInlineResult):
         sent = await bot.send_audio(
             chat_id=user_id,
             audio=audio_file,
-            title=f"{track['title']}",
-            performer=track['artist'],
+            title=track["title"],
+            performer=track["artist"],
+            thumbnail=thumb  # ⭐ ВАЖНО: обложка здесь
         )
         file_id = sent.audio.file_id
         print("✔ Uploaded OK. file_id:", file_id)
@@ -174,22 +183,21 @@ async def diagnostic_chosen(result: ChosenInlineResult):
         )
         return
 
-    # --- 4. Удаляем служебное сообщение ---
+    # ==== 5. Удаляем сообщение в личке ====
     try:
         await bot.delete_message(chat_id=user_id, message_id=sent.message_id)
     except Exception as e:
         print("⚠ Не удалось удалить личное сообщение:", e)
 
-    # --- 5. Редактируем inline-сообщение ---
-    thumb = FSInputFile("ttumb.jpg")
+    # ==== 6. Редактируем inline, подставляя загруженный file_id ====
     try:
         await bot.edit_message_media(
             inline_message_id=inline_id,
             media=InputMediaAudio(
                 media=file_id,
-                title=f"{track['title']}",
-                performer=track['artist'],
-                thumb=thumb
+                title=track["title"],
+                performer=track["artist"],
+                # thumbnail сюда ставить нельзя — Telegram игнорирует
             )
         )
         print("✔ Inline edited successfully")
