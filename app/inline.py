@@ -3,6 +3,7 @@ import traceback
 from aiogram import Router
 from aiogram.types import (
     InlineQuery, InlineQueryResultArticle,
+    FSInputFile,BufferedInputFile,
     InputTextMessageContent, InputMediaAudio,InlineKeyboardMarkup,
     InlineKeyboardButton, ChosenInlineResult
 )
@@ -149,15 +150,22 @@ async def diagnostic_chosen(result: ChosenInlineResult):
     print(f"✔ Downloaded {len(data)} bytes")
 
     # --- 3. Загружаем пользователю в личку ---
+
+    audio_file = BufferedInputFile(
+        data,
+        filename=f"{track['artist']} - {track['title']}.mp3"
+    )
+
     try:
         sent = await bot.send_audio(
             chat_id=user_id,
-            audio=data,
+            audio=audio_file,
             title=f"{track['artist']} — {track['title']}",
             performer=track['artist'],
         )
         file_id = sent.audio.file_id
-        print("✔ Uploaded. file_id:", file_id)
+        print("✔ Uploaded OK. file_id:", file_id)
+
     except Exception as e:
         print("❌ Upload failed:", e)
         await bot.edit_message_text(
