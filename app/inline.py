@@ -162,9 +162,9 @@ async def diagnostic_chosen(result: ChosenInlineResult):
     print("Detected content-type:", ct)
 
     audio = InputMediaAudio(
-        media=mp3_url,  # прямая ссылка
-        title=f"{track.get('artist')} — {track.get('title')}",  # красивое название
-        performer=track.get("artist")
+        media=mp3_url,
+        title=f"{track['artist']} — {track['title']}",
+        performer=track['artist']
     )
     try:
         print("Attempting bot.edit_message_media(inline_message_id=..., media=InputMediaAudio(media=mp3_url))")
