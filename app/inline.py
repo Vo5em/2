@@ -1,9 +1,5 @@
 import aiohttp
 import traceback
-import tempfile
-import os
-from mutagen.id3 import ID3, APIC, TIT2, TPE1, ID3NoHeaderError
-from mutagen.mp3 import MP3
 from aiogram import Router
 from aiogram.types import (
     InlineQuery, InlineQueryResultArticle,
@@ -103,7 +99,7 @@ async def inline_search(q: InlineQuery):
 
 @router.chosen_inline_result()
 async def diagnostic_chosen(result: ChosenInlineResult):
-    print("\n===== CHOSEN_INLINE_RESULT (download → embed_cover → upload → edit) =====")
+    print("\n===== CHOSEN_INLINE_RESULT (download → upload → edit) =====")
 
     tid = result.result_id
     track = TRACKS.get(tid)
@@ -116,7 +112,7 @@ async def diagnostic_chosen(result: ChosenInlineResult):
 
     print("✔ Track:", track)
 
-    # 1) Resolve mp3 url
+    # --- 1. Получаем прямой mp3 URL ---
     try:
         if track.get("source") == "SoundCloud":
             mp3_url = await get_soundcloud_mp3_url(track["url"])
@@ -127,135 +123,82 @@ async def diagnostic_chosen(result: ChosenInlineResult):
         return
 
     if not mp3_url:
-        await bot.edit_message_text(inline_message_id=inline_id, text="❌ Не удалось получить mp3 URL")
+        await bot.edit_message_text(
+            inline_message_id=inline_id,
+            text="❌ Не удалось получить mp3 URL"
+        )
         return
 
     print("✔ Resolved mp3:", mp3_url)
 
-    # 2) Download mp3
+    # --- 2. Скачиваем mp3 ---
+    import aiohttp
     async with aiohttp.ClientSession() as session:
         try:
-            async with session.get(mp3_url, timeout=30) as r:
+            async with session.get(mp3_url) as r:
                 if r.status != 200:
                     raise Exception(f"GET {r.status}")
-                mp3_bytes = await r.read()
+                data = await r.read()
         except Exception as e:
             print("❌ Download failed:", e)
-            await bot.edit_message_text(inline_message_id=inline_id, text="❌ Ошибка скачивания файла")
+            await bot.edit_message_text(
+                inline_message_id=inline_id,
+                text="❌ Ошибка скачивания файла"
+            )
             return
 
-    print(f"✔ Downloaded {len(mp3_bytes)} bytes")
+    print(f"✔ Downloaded {len(data)} bytes")
 
-    # 3) Embed cover (safe)
-    try:
-        mp3_ready = embed_cover(
-            mp3_bytes,
-            "ttumb.jpg",
-            title=track.get("title", ""),
-            artist=track.get("artist", "")
-        )
-    except Exception as e:
-        print("❌ embed_cover failed:", e)
-        traceback.print_exc()
-        # fallback: если ошибка — используем оригинальные mp3_bytes
-        mp3_ready = mp3_bytes
+    # --- 3. Загружаем пользователю в личку ---
 
-    print(f"✔ MP3 with cover ready ({len(mp3_ready)} bytes)")
-
-    # 4) Upload to user (BufferedInputFile)
     audio_file = BufferedInputFile(
-        mp3_ready,
-        filename=f"{track.get('artist','unknown')} - {track.get('title','track')}.mp3"
+        data,
+        filename=f"{track['artist']} - {track['title']}.mp3"
     )
 
     try:
         sent = await bot.send_audio(
             chat_id=user_id,
             audio=audio_file,
-            title=track.get("title"),
-            performer=track.get("artist"),
-            disable_notification=True
+            title=f"{track['title']}",
+            performer=track['artist'],
         )
         file_id = sent.audio.file_id
         print("✔ Uploaded OK. file_id:", file_id)
+
     except Exception as e:
         print("❌ Upload failed:", e)
-        traceback.print_exc()
-        await bot.edit_message_text(inline_message_id=inline_id, text="❌ Ошибка отправки файла")
+        await bot.edit_message_text(
+            inline_message_id=inline_id,
+            text="❌ Ошибка отправки файла"
+        )
         return
 
-    # 5) Remove helper message in user's private chat
+    # --- 4. Удаляем служебное сообщение ---
     try:
         await bot.delete_message(chat_id=user_id, message_id=sent.message_id)
     except Exception as e:
         print("⚠ Не удалось удалить личное сообщение:", e)
 
-    # 6) Edit inline message to use file_id
+    # --- 5. Редактируем inline-сообщение ---
+    thumb = FSInputFile("ttumb.jpg")
     try:
         await bot.edit_message_media(
             inline_message_id=inline_id,
             media=InputMediaAudio(
                 media=file_id,
-                title=track.get("title"),
-                performer=track.get("artist")
+                title=f"{track['title']}",
+                performer=track['artist'],
+                thumb=thumb
             )
         )
         print("✔ Inline edited successfully")
     except Exception as e:
         print("❌ Inline edit failed:", e)
-        traceback.print_exc()
-        await bot.edit_message_text(inline_message_id=inline_id, text=f"⚠ Ошибка редактирования. file_id: {file_id}")
+        await bot.edit_message_text(
+            inline_message_id=inline_id,
+            text=f"⚠ Ошибка редактирования. file_id: {file_id}"
+        )
 
     print("===== END =====\n")
-
-
-def embed_cover(mp3_bytes: bytes, cover_path: str, title: str, artist: str) -> bytes:
-    """
-    Надёжно встраивает JPEG cover_path в mp3_bytes (APIC) и возвращает новые байты mp3.
-    Работает через временный файл, чтобы mutagen корректно сохранил аудио + теги.
-    """
-    # 1) записать mp3_bytes во временный файл
-    tmp_mp3 = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
-    try:
-        tmp_mp3.write(mp3_bytes)
-        tmp_mp3.close()
-
-        # 2) убедиться, что есть ID3 (создать, если нет)
-        try:
-            tags = ID3(tmp_mp3.name)
-        except ID3NoHeaderError:
-            tags = ID3()
-
-        # 3) прочитать обложку
-        with open(cover_path, "rb") as f:
-            cover_data = f.read()
-
-        # 4) вписать APIC + TIT2 + TPE1
-        tags.delall("APIC")
-        tags.add(APIC(
-            encoding=3,          # utf-8
-            mime='image/jpeg',
-            type=3,              # front cover
-            desc='Cover',
-            data=cover_data
-        ))
-        tags.delall("TIT2")
-        tags.add(TIT2(encoding=3, text=title))
-        tags.delall("TPE1")
-        tags.add(TPE1(encoding=3, text=artist))
-
-        # 5) сохранить теги в файл (mutagen позаботится о сохранении аудио)
-        tags.save(tmp_mp3.name)
-
-        # 6) прочитать получившийся файл
-        with open(tmp_mp3.name, "rb") as f:
-            result = f.read()
-
-    finally:
-        try:
-            os.unlink(tmp_mp3.name)
-        except Exception:
-            pass
-
-    return result
 
