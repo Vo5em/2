@@ -5,6 +5,7 @@ import json
 import uuid
 import asyncio
 from rapidfuzz import fuzz
+from urllib.parse import urljoin
 from app.database.models import User, async_session
 from sqlalchemy import select, update, delete, desc
 from bs4 import BeautifulSoup
@@ -49,9 +50,9 @@ async def get_soundcloud_mp3_url(transcoding_url: str):
                     return None
 
                 data = await r.json()
-
-                # SoundCloud API иногда отдаёт прямой mp3
+                print("transcoding response json keys:", data.keys())
                 if "url" in data:
+                    print("soundcloud direct url:", data["url"])
                     return data["url"]
 
     except Exception as e:
@@ -240,6 +241,7 @@ async def get_skysound_mp3(track_page_url: str):
 
     if file_match:
         full_mp3 = file_match.group(1)
+        full_mp3 = urljoin(track_page_url, full_mp3)
         return full_mp3
 
     # Если нашли только preview — значит полного файла НЕТ

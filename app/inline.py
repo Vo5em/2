@@ -149,7 +149,10 @@ async def diagnostic_chosen(result: ChosenInlineResult):
             except Exception as e:
                 print("edit_message_text error:", e)
         return
-
+    print(">>> TRACK DIAGNOSTICS:")
+    print(" title:", repr(track.get("title")))
+    print(" artist:", repr(track.get("artist")))
+    print(" mp3_url:", repr(mp3_url))
     # Проверим доступность URL с точки зрения Telegram (HEAD + small GET)
     async with aiohttp.ClientSession() as session:
         probe = await probe_url(session, mp3_url)
@@ -160,6 +163,9 @@ async def diagnostic_chosen(result: ChosenInlineResult):
     # ВАЖНО: Telegram запрещает некоторые MIME для inline edit -> нужно, чтобы Content-Type был audio/mpeg или audio/ogg и т.п.
     ct = probe.get("content_type") or (probe.get("get_headers") or {}).get("Content-Type")
     print("Detected content-type:", ct)
+    print("✔ Found track:", repr(track))
+    print("title raw:", repr(track.get("title")))
+    print("artist raw:", repr(track.get("artist")))
 
     audio = InputMediaAudio(
         media=mp3_url,
