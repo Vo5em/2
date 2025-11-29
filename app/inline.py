@@ -98,103 +98,99 @@ async def inline_search(q: InlineQuery):
 
 @router.chosen_inline_result()
 async def diagnostic_chosen(result: ChosenInlineResult):
-    print("\n===== DIAGNOSTIC CHOSEN_INLINE_RESULT =====")
-    try:
-        print("raw chosen result:", result.model_dump_json(indent=2))
-    except Exception:
-        print("raw chosen result (no json available)")
+    print("\n===== CHOSEN_INLINE_RESULT (download → upload → edit) =====")
 
     tid = result.result_id
-    print("result_id (tid):", tid)
-
     track = TRACKS.get(tid)
+    inline_id = result.inline_message_id
+    user_id = result.from_user.id
+
     if not track:
-        print("❌ Track not found in TRACKS maps for tid:", tid)
+        print("❌ Track not found")
         return
 
-    print("✔ Found track:", track)
+    print("✔ Track:", track)
 
-    inline_id = result.inline_message_id
-    print("inline_message_id:", inline_id)
-
-    user = getattr(result, "from_user", None)
-    print("from_user:", user.model_dump() if user else None)
-
-    # Resolve direct mp3 URL using your functions
-    mp3_url = None
+    # --- 1. Получаем прямой mp3 URL ---
     try:
         if track.get("source") == "SoundCloud":
             mp3_url = await get_soundcloud_mp3_url(track["url"])
         else:
-            # for SkySound or others, prefer get_skysound_mp3 if available
-            if "skysound" in track.get("source", "").lower():
-                mp3_url = await get_skysound_mp3(track["url"])
-            else:
-                mp3_url = track.get("mp3") or track.get("url")
+            mp3_url = await get_skysound_mp3(track["url"])
     except Exception as e:
-        print("❌ Error resolving mp3 URL:", repr(e))
-        traceback.print_exc()
-
-    print("Resolved mp3_url:", mp3_url)
+        print("❌ mp3 resolve error:", e)
+        return
 
     if not mp3_url:
-        print("❌ No mp3 URL — aborting.")
-        # если есть inline_id, сообщим пользователю
-        if inline_id:
-            try:
-                await bot.edit_message_text(
-                    inline_message_id=inline_id,
-                    text="❌ Не удалось получить прямой mp3 URL"
-                )
-            except Exception as e:
-                print("edit_message_text error:", e)
-        return
-    print(">>> TRACK DIAGNOSTICS:")
-    print(" title:", repr(track.get("title")))
-    print(" artist:", repr(track.get("artist")))
-    print(" mp3_url:", repr(mp3_url))
-    # Проверим доступность URL с точки зрения Telegram (HEAD + small GET)
-    async with aiohttp.ClientSession() as session:
-        probe = await probe_url(session, mp3_url)
-    print("Probe result for mp3_url:")
-    for k, v in probe.items():
-        print(f"  {k}: {v}")
-
-    # ВАЖНО: Telegram запрещает некоторые MIME для inline edit -> нужно, чтобы Content-Type был audio/mpeg или audio/ogg и т.п.
-    ct = probe.get("content_type") or (probe.get("get_headers") or {}).get("Content-Type")
-    print("Detected content-type:", ct)
-    print("✔ Found track:", repr(track))
-    print("title raw:", repr(track.get("title")))
-    print("artist raw:", repr(track.get("artist")))
-
-    audio = InputMediaAudio(
-        media=mp3_url,
-        title=f"{track['artist']} — {track['title']}",
-        performer=track['artist']
-    )
-    try:
-        print("Attempting bot.edit_message_media(inline_message_id=..., media=InputMediaAudio(media=mp3_url))")
-        await bot.edit_message_media(
-            inline_message_id=inline_id,
-            media=audio)
-
-        print("✅ edit_message_media OK (no exception)")
-        return
-    except Exception as e:
-        print("❌ edit_message_media raised:", repr(e))
-        import traceback as _tb
-        _tb.print_exc()
-
-    # fallback: если edit failed, попробуем просто edit caption/text to show the mp3_url to user
-    try:
         await bot.edit_message_text(
             inline_message_id=inline_id,
-            text=f"⚠ Не удалось заменить на аудио. mp3 URL: {mp3_url}"
+            text="❌ Не удалось получить mp3 URL"
         )
-    except Exception as e2:
-        print("Fallback edit_message_text also failed:", repr(e2))
+        return
 
-    print("===== END DIAGNOSTIC ====\n")
+    print("✔ Resolved mp3:", mp3_url)
+
+    # --- 2. Скачиваем mp3 ---
+    import aiohttp
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.get(mp3_url) as r:
+                if r.status != 200:
+                    raise Exception(f"GET {r.status}")
+                data = await r.read()
+        except Exception as e:
+            print("❌ Download failed:", e)
+            await bot.edit_message_text(
+                inline_message_id=inline_id,
+                text="❌ Ошибка скачивания файла"
+            )
+            return
+
+    print(f"✔ Downloaded {len(data)} bytes")
+
+    # --- 3. Загружаем пользователю в личку ---
+    try:
+        sent = await bot.send_audio(
+            chat_id=user_id,
+            audio=data,
+            title=f"{track['artist']} — {track['title']}",
+            performer=track['artist'],
+        )
+        file_id = sent.audio.file_id
+        print("✔ Uploaded. file_id:", file_id)
+    except Exception as e:
+        print("❌ Upload failed:", e)
+        await bot.edit_message_text(
+            inline_message_id=inline_id,
+            text="❌ Ошибка отправки файла"
+        )
+        return
+
+    # --- 4. Удаляем служебное сообщение ---
+    try:
+        await bot.delete_message(chat_id=user_id, message_id=sent.message_id)
+    except Exception as e:
+        print("⚠ Не удалось удалить личное сообщение:", e)
+
+    # --- 5. Редактируем inline-сообщение ---
+    try:
+        await bot.edit_message_media(
+            inline_message_id=inline_id,
+            media=InputMediaAudio(
+                media=file_id,
+                title=f"{track['artist']} — {track['title']}",
+                performer=track['artist']
+            )
+        )
+        print("✔ Inline edited successfully")
+    except Exception as e:
+        print("❌ Inline edit failed:", e)
+        await bot.edit_message_text(
+            inline_message_id=inline_id,
+            text=f"⚠ Ошибка редактирования. file_id: {file_id}"
+        )
+
+    print("===== END =====\n")
 
 
 
