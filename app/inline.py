@@ -80,8 +80,8 @@ async def inline_search(q: InlineQuery):
         results.append(
             InlineQueryResultArticle(
                 id=tid,
-                title=f"{t['artist']} — {t['title']}",
-                description=f"{t['source']} / {t['duration']}",
+                title=f"{t['title']}",
+                description=f"{t['artist']} / {t['duration']}",
                 thumb_url=t["thumb"],
                 reply_markup=InlineKeyboardMarkup(
                     inline_keyboard=[
@@ -160,7 +160,7 @@ async def diagnostic_chosen(result: ChosenInlineResult):
         sent = await bot.send_audio(
             chat_id=user_id,
             audio=audio_file,
-            title=f"{track['artist']} — {track['title']}",
+            title=f"{track['title']}",
             performer=track['artist'],
         )
         file_id = sent.audio.file_id
@@ -186,7 +186,7 @@ async def diagnostic_chosen(result: ChosenInlineResult):
             inline_message_id=inline_id,
             media=InputMediaAudio(
                 media=file_id,
-                title=f"{track['artist']} — {track['title']}",
+                title=f"{track['title']}",
                 performer=track['artist']
             )
         )
