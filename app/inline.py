@@ -163,7 +163,7 @@ async def diagnostic_chosen(result: ChosenInlineResult):
 
     audio = InputMediaAudio(
         media=mp3_url,  # прямая ссылка
-        title=f"{track.get("artist")} — {track.get("title")}",  # красивое название
+        title=f"{track.get('artist')} — {track.get('title')}",  # красивое название
         performer=track.get("artist")
     )
     try:
