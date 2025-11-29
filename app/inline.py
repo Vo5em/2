@@ -1,5 +1,8 @@
 import aiohttp
 import traceback
+from mutagen.id3 import ID3, APIC, TIT2, TPE1
+from mutagen.mp3 import MP3
+from io import BytesIO
 from aiogram import Router
 from aiogram.types import (
     InlineQuery, InlineQueryResultArticle,
@@ -99,7 +102,7 @@ async def inline_search(q: InlineQuery):
 
 @router.chosen_inline_result()
 async def diagnostic_chosen(result: ChosenInlineResult):
-    print("\n===== CHOSEN_INLINE_RESULT (download → upload → edit) =====")
+    print("\n===== CHOSEN_INLINE_RESULT (download → embed_cover → upload → edit) =====")
 
     tid = result.result_id
     track = TRACKS.get(tid)
@@ -112,7 +115,7 @@ async def diagnostic_chosen(result: ChosenInlineResult):
 
     print("✔ Track:", track)
 
-    # --- 1. Получаем прямой mp3 URL ---
+    # --- 1. Получаем mp3 URL ---
     try:
         if track.get("source") == "SoundCloud":
             mp3_url = await get_soundcloud_mp3_url(track["url"])
@@ -138,7 +141,7 @@ async def diagnostic_chosen(result: ChosenInlineResult):
             async with session.get(mp3_url) as r:
                 if r.status != 200:
                     raise Exception(f"GET {r.status}")
-                data = await r.read()
+                mp3_bytes = await r.read()
         except Exception as e:
             print("❌ Download failed:", e)
             await bot.edit_message_text(
@@ -147,12 +150,25 @@ async def diagnostic_chosen(result: ChosenInlineResult):
             )
             return
 
-    print(f"✔ Downloaded {len(data)} bytes")
+    print(f"✔ Downloaded {len(mp3_bytes)} bytes")
 
-    # --- 3. Загружаем пользователю в личку ---
+    # --- 3. Встраиваем обложку в mp3 ---
+    try:
+        mp3_ready = embed_cover(
+            mp3_bytes,
+            "ttumb.jpg",
+            title=track["title"],
+            artist=track["artist"]
+        )
+    except Exception as e:
+        print("❌ embed_cover failed:", e)
+        mp3_ready = mp3_bytes
 
+    print(f"✔ MP3 with cover ready ({len(mp3_ready)} bytes)")
+
+    # --- 4. Отправляем пользователю в личку ---
     audio_file = BufferedInputFile(
-        data,
+        mp3_ready,
         filename=f"{track['artist']} - {track['title']}.mp3"
     )
 
@@ -160,8 +176,8 @@ async def diagnostic_chosen(result: ChosenInlineResult):
         sent = await bot.send_audio(
             chat_id=user_id,
             audio=audio_file,
-            title=f"{track['title']}",
-            performer=track['artist'],
+            title=track["title"],
+            performer=track["artist"],
         )
         file_id = sent.audio.file_id
         print("✔ Uploaded OK. file_id:", file_id)
@@ -174,19 +190,19 @@ async def diagnostic_chosen(result: ChosenInlineResult):
         )
         return
 
-    # --- 4. Удаляем служебное сообщение ---
+    # Удаляем служебное сообщение
     try:
         await bot.delete_message(chat_id=user_id, message_id=sent.message_id)
-    except Exception as e:
-        print("⚠ Не удалось удалить личное сообщение:", e)
+    except:
+        pass
 
-    # --- 5. Редактируем inline-сообщение ---
+    # --- 5. Заменяем inline-сообщение на аудио ---
     try:
         await bot.edit_message_media(
             inline_message_id=inline_id,
             media=InputMediaAudio(
                 media=file_id,
-                title=f"{track['title']}",
+                title=track['title'],
                 performer=track['artist']
             )
         )
@@ -199,6 +215,36 @@ async def diagnostic_chosen(result: ChosenInlineResult):
         )
 
     print("===== END =====\n")
+
+def embed_cover(mp3_bytes: bytes, cover_path: str, title: str, artist: str) -> bytes:
+    """
+    Встраивает JPG-обложку прямо в MP3 как ID3 APIC.
+    Возвращает новые mp3 байты.
+    """
+    audio = MP3(BytesIO(mp3_bytes))
+    if audio.tags is None:
+        audio.add_tags()
+
+    # Читаем обложку
+    with open(cover_path, "rb") as f:
+        cover_bytes = f.read()
+
+    # Добавляем APIC (cover)
+    audio.tags["APIC"] = APIC(
+        encoding=3,
+        mime="image/jpeg",
+        type=3,  # front cover
+        desc="Cover",
+        data=cover_bytes
+    )
+
+    # Прописываем теги, чтобы Telegram понял метаданные
+    audio.tags["TIT2"] = TIT2(encoding=3, text=title)
+    audio.tags["TPE1"] = TPE1(encoding=3, text=artist)
+
+    out = BytesIO()
+    audio.save(out)
+    return out.getvalue()
 
 
 
