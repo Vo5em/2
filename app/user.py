@@ -16,6 +16,7 @@ user = Router()
 user_tracks = {}
 
 file_01 = "AgACAgIAAxkBAAIE52kgt3bMrOFh_E8zC13pEFXhAco9AALjEGsbdTMAAUlnAmO6fj4n1AEAAwIAA20AAzYE"
+sticker01 = "CAACAgIAAxkBAAP-aSNrdHp8sYxEb5tu7MX9QeNe2BIAAoR3AAKBRPBIrSZeeRrV1yw2BA"
 
 @user.message(CommandStart())
 async def cmd_start(message: Message):
@@ -119,6 +120,7 @@ async def play_track(callback: CallbackQuery):
             caption= f'<a href="https://t.me/eschalon">eschalon</a>, <a href="t.me/eschalonmusicbot">music</a>',
             parse_mode="HTML"
         )
+        await callback.message.answer_sticker(sticker=sticker01)
 
 
     except Exception as e:
