@@ -17,11 +17,13 @@ user_tracks = {}
 
 file_01 = "AgACAgIAAxkBAAIE52kgt3bMrOFh_E8zC13pEFXhAco9AALjEGsbdTMAAUlnAmO6fj4n1AEAAwIAA20AAzYE"
 sticker01 = "CAACAgIAAxkBAAP-aSNrdHp8sYxEb5tu7MX9QeNe2BIAAoR3AAKBRPBIrSZeeRrV1yw2BA"
+sticker02 = "CAACAgIAAxkBAAICaGkrit7X9qJNiots4pMh_1MoMmI2AAJ5hQACNFVgSVffCjgtzshbNgQ"
 
 @user.message(CommandStart())
 async def cmd_start(message: Message):
     await set_user(message.from_user.id)
     await message.answer('Добро пожаловать в музыкальный архив eschalon.\n\nЗапросите исполнителя или трек.')
+    await message.answer_sticker(sticker=sticker02)
 
 
 @user.message(F.text)
