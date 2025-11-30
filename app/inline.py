@@ -151,7 +151,7 @@ async def diagnostic_chosen(result: ChosenInlineResult):
 
     # ==== 3. Загружаем thumbnail ====
     try:
-        with open("tttumb.jpg", "rb") as f:
+        with open("ttumb.jpg", "rb") as f:
             thumb_data = f.read()
         thumb = BufferedInputFile(thumb_data, filename="thumb.jpg")
     except Exception as e:
