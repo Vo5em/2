@@ -16,8 +16,8 @@ user = Router()
 user_tracks = {}
 
 file_01 = "AgACAgIAAxkBAAIE52kgt3bMrOFh_E8zC13pEFXhAco9AALjEGsbdTMAAUlnAmO6fj4n1AEAAwIAA20AAzYE"
-sticker01 = "CAACAgIAAxkBAAP-aSNrdHp8sYxEb5tu7MX9QeNe2BIAAoR3AAKBRPBIrSZeeRrV1yw2BA"
-sticker02 = "CAACAgIAAxkBAAICaGkrit7X9qJNiots4pMh_1MoMmI2AAJ5hQACNFVgSVffCjgtzshbNgQ"
+sticker01 = "CAACAgIAAxkBAAICemkroKC1Fsh8FpcYKne9A5s5QvtrAAIPkQACd0NZSXusnKn7HweeNgQ"
+sticker02 = "CAACAgIAAxkBAAICfGkroPRU76PFh9wRaGhU2V4afFquAAJsmAACexBZSc5UN0J_oDT8NgQ"
 
 @user.message(CommandStart())
 async def cmd_start(message: Message):
