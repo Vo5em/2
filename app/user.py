@@ -17,7 +17,7 @@ user_tracks = {}
 
 file_01 = "AgACAgIAAxkBAAIE52kgt3bMrOFh_E8zC13pEFXhAco9AALjEGsbdTMAAUlnAmO6fj4n1AEAAwIAA20AAzYE"
 sticker01 = "CAACAgIAAxkBAAICemkroKC1Fsh8FpcYKne9A5s5QvtrAAIPkQACd0NZSXusnKn7HweeNgQ"
-sticker02 = "CAACAgIAAxkBAAICkWkropFULkPfAV0BnW0UbAaVpMKGAAJmmAACxq1YSTdXZJrPZccsNgQ"
+sticker02 = "CAACAgIAAxkBAAICmGkrpgcET5MFuf_4LNNR_nQmqNwmAAIGiAACVAxhSTGEsC0p0xNcNgQ"
 
 @user.message(CommandStart())
 async def cmd_start(message: Message):
